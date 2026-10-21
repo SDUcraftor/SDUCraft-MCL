@@ -247,14 +247,9 @@ Public Module SduModpackAdapter
     ''' 未识别结构：把下载包复制到 PCL 目录下 SduDownload 文件夹，打开资源管理器提示用户手动安装。
     ''' </summary>
     Private Sub OpenManualInstallFolder(DownloadedFile As String, Item As SduGameDownload)
-        Dim Folder As String = Paths.Base & "SduDownload\"
-        DirectoryUtils.Create(Folder)
-        Dim FileName As String = SduModpackInstaller.CreateSduInstanceName(Item) & PathUtils.GetExtension(DownloadedFile)
-        Dim Target As String = Folder & FileName
-        If Not FileUtils.Exists(Target) Then FileUtils.Copy(DownloadedFile, Target)
-        Logger.Info($"已复制整合包到手动安装目录：{Target}")
-        OpenExplorer(Folder)
-        Hint($"未能自动识别 {Item.Name} 的包结构，已打开下载文件夹，请手动将其拖入启动器安装。", HintType.Blue)
+        SduModpackInstaller.OpenManualInstallFolder(DownloadedFile,
+            SduModpackInstaller.CreateSduInstanceName(Item),
+            $"未能自动识别 {Item.Name} 的包结构。")
     End Sub
 
 #End Region

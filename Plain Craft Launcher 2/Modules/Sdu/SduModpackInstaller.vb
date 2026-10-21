@@ -50,6 +50,9 @@ Public Module SduModpackInstaller
                 Select Case MyLoader.State
                     Case LoadState.Failed
                         Hint(MyLoader.Name & "失败：" & MyLoader.Error.GetDisplay(False), HintType.Red)
+                        ' 安装失败时跳转到下载包所在目录，建议用户手动安装
+                        RunInNewThread(Sub() OpenManualInstallFolder(LocalFile, InstanceName,
+                            $"{InstanceName} 自动安装失败，已转入手动安装流程。"), "SDUcraft 安装失败转手动")
                     Case LoadState.Canceled
                         Hint(MyLoader.Name & "已取消！", HintType.Blue)
                 End Select
@@ -65,6 +68,27 @@ Public Module SduModpackInstaller
             FrmMain.BtnExtraDownload.ShowRefresh()
         End Sub)
         RunInUi(Sub() FrmMain.PageChange(FormMain.PageType.TaskManager))
+    End Sub
+
+    ''' <summary>
+    ''' 把已下载的整合包复制到 PCL 目录下 SduDownload 文件夹并打开资源管理器，提示用户手动安装。
+    ''' 下载文件不存在时只提示，不打开文件夹。
+    ''' </summary>
+    Public Sub OpenManualInstallFolder(DownloadedFile As String, InstanceName As String, Message As String)
+        If Not FileUtils.Exists(DownloadedFile) Then
+            Hint(Message, HintType.Red)
+            Return
+        End If
+
+        Dim Folder As String = Paths.Base & "SduDownload\"
+        DirectoryUtils.Create(Folder)
+        Dim SafeName As String = System.Text.RegularExpressions.Regex.Replace(InstanceName, "[\\/:*?""<>|!;\r\n\t]", "_").Trim("_"c, " "c)
+        If SafeName = "" Then SafeName = "SDUcraft-Pack"
+        Dim Target As String = Folder & SafeName & PathUtils.GetExtension(DownloadedFile)
+        If Not FileUtils.Exists(Target) Then FileUtils.Copy(DownloadedFile, Target)
+        Logger.Info($"已复制整合包到手动安装目录：{Target}")
+        OpenExplorer(Folder)
+        Hint(Message & vbCrLf & "已打开下载文件夹，请手动将整合包拖入启动器安装。", HintType.Blue)
     End Sub
 
     ''' <summary>
