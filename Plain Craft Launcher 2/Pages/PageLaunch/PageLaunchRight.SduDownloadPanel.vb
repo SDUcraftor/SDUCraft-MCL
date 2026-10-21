@@ -29,6 +29,7 @@ Partial Public Class PageLaunchRight
     Private _SduDownloadItems As List(Of SduDownloadItem)
     Private _SduDownloadReadIds As HashSet(Of String)
     Private _SduDownloadCard As MyCard
+    Private _SduDownloadJumpRow As Border
     Private _SduDownloadStatus As TextBlock
     Private WithEvents _SduDownloadScroll As ScrollViewer
     Private _SduDownloadStack As StackPanel
@@ -36,6 +37,7 @@ Partial Public Class PageLaunchRight
     Private _SduDownloadVisibleCount As Integer
     Private _SduDownloadIsLoading As Boolean
     Private _SduDownloadIsWaitingNextScroll As Boolean
+    Private _SduDownloadInstalling As Boolean
 
     Private ReadOnly SduDownloadStartLock As New Object
 
@@ -102,24 +104,62 @@ Partial Public Class PageLaunchRight
             .Tag = SduDownloadPanelTag
         }
 
+        '顶部浮动行：跳转官网下载界面
+        _SduDownloadJumpRow = CreateSduDownloadJumpRow()
+
         _SduDownloadStatus = New TextBlock With {
             .FontSize = 11.5,
             .Opacity = 0.65,
-            .Margin = New Thickness(20, 36, 20, 6)
+            .Margin = New Thickness(20, 68, 20, 6)
         }
 
         _SduDownloadStack = New StackPanel
         _SduDownloadScroll = New ScrollViewer With {
             .MaxHeight = SduDownloadListMaxHeight,
-            .Margin = New Thickness(20, 60, 20, 14),
+            .Margin = New Thickness(20, 96, 20, 14),
             .HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
             .VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
             .Content = _SduDownloadStack
         }
 
+        _SduDownloadCard.Children.Add(_SduDownloadJumpRow)
         _SduDownloadCard.Children.Add(_SduDownloadStatus)
         _SduDownloadCard.Children.Add(_SduDownloadScroll)
     End Sub
+
+    Private Function CreateSduDownloadJumpRow() As Border
+        Dim Text As New TextBlock With {
+            .Text = "在官网下载页浏览全部整合包",
+            .FontSize = 12,
+            .Foreground = New SolidColorBrush(Color.FromRgb(19, 112, 243)),
+            .VerticalAlignment = VerticalAlignment.Center
+        }
+        Dim Arrow As New TextBlock With {
+            .Text = "前往官网 →",
+            .FontSize = 12,
+            .Foreground = New SolidColorBrush(Color.FromRgb(19, 112, 243)),
+            .FontWeight = FontWeights.Bold,
+            .VerticalAlignment = VerticalAlignment.Center
+        }
+        Dim Row As New Grid
+        Row.ColumnDefinitions.Add(New ColumnDefinition With {.Width = New GridLength(1, GridUnitType.Star)})
+        Row.ColumnDefinitions.Add(New ColumnDefinition With {.Width = GridLength.Auto})
+        Grid.SetColumn(Text, 0)
+        Grid.SetColumn(Arrow, 1)
+        Row.Children.Add(Text)
+        Row.Children.Add(Arrow)
+
+        Dim Border As New Border With {
+            .Background = New SolidColorBrush(Color.FromRgb(234, 242, 254)),
+            .CornerRadius = New CornerRadius(4),
+            .Margin = New Thickness(20, 34, 20, 0),
+            .Padding = New Thickness(10, 7, 10, 7),
+            .Cursor = Cursors.Hand,
+            .Child = Row
+        }
+        AddHandler Border.MouseLeftButtonUp, AddressOf SduDownloadJumpClick
+        Return Border
+    End Function
 
     Private Sub AppendSduDownloadItems(ItemCount As Integer)
         If _SduDownloadItems Is Nothing OrElse _SduDownloadStack Is Nothing Then Return
@@ -147,9 +187,9 @@ Partial Public Class PageLaunchRight
         Dim TotalCount = _SduDownloadItems.Count
         If _SduDownloadVisibleCount < TotalCount Then
             Dim NextCount = Math.Min(SduDownloadPageSize, TotalCount - _SduDownloadVisibleCount)
-            _SduDownloadStatus.Text = $"已加载 {_SduDownloadVisibleCount} / {TotalCount} 条 · 向下滚动加载后 {NextCount} 条 · 未读标为【新】"
+            _SduDownloadStatus.Text = $"已加载 {_SduDownloadVisibleCount} / {TotalCount} 条 · 向下滚动加载后 {NextCount} 条 · 点击条目直接下载安装"
         Else
-            _SduDownloadStatus.Text = $"已加载全部 {TotalCount} 条 · 点击条目打开下载页 · 未读标为【新】"
+            _SduDownloadStatus.Text = $"已加载全部 {TotalCount} 条 · 点击条目直接下载安装 · 未读标为【新】"
         End If
     End Sub
 
@@ -180,6 +220,7 @@ Partial Public Class PageLaunchRight
         Next
 
         _SduDownloadCard = Nothing
+        _SduDownloadJumpRow = Nothing
         _SduDownloadStatus = Nothing
         _SduDownloadScroll = Nothing
         _SduDownloadStack = Nothing
@@ -308,6 +349,10 @@ Partial Public Class PageLaunchRight
         }
     End Function
 
+    Private Sub SduDownloadJumpClick(Sender As Object, EventArgs As System.Windows.Input.MouseButtonEventArgs)
+        OpenWebsite(SduDownloadPageUrl)
+    End Sub
+
     Private Sub SduDownloadItemClick(Sender As Object, EventArgs As System.Windows.Input.MouseButtonEventArgs)
         Dim ItemBorder = TryCast(Sender, Border)
         If ItemBorder Is Nothing Then Return
@@ -317,7 +362,39 @@ Partial Public Class PageLaunchRight
             MarkSduDownloadItemRead(ItemBorder, ItemId)
         End If
 
-        OpenWebsite(SduDownloadPageUrl)
+        StartSduDownloadInstall(ItemId)
+    End Sub
+
+    Private Sub StartSduDownloadInstall(ItemId As String)
+        If ItemId = "" Then Return
+        If RestrictMcDownload Then
+            Hint("当前构建已关闭 MC 下载安装功能。", HintType.Red)
+            Return
+        End If
+        If _SduDownloadInstalling Then
+            Hint("已有 SDUcraft 整合包正在下载安装。", HintType.Blue)
+            Return
+        End If
+
+        _SduDownloadInstalling = True
+        RunInThread(
+        Sub()
+            Try
+                '下载页数据与速览列表共用同一 ID，这里拉取完整数据以拿到下载直链
+                Dim Packs = SduModpackService.FetchModpacks()
+                Dim Pack = Packs.FirstOrDefault(Function(P) P.Id = ItemId)
+                If Pack Is Nothing Then
+                    Hint("未找到该整合包的下载文件。", HintType.Red)
+                    Return
+                End If
+                SduModpackInstaller.StartInstall(Pack)
+            Catch ex As Exception
+                ex.ThrowIfCanceled()
+                Logger.Error(ex, "SDUcraft 整合包一键安装失败", LogBehavior.Alert)
+            Finally
+                _SduDownloadInstalling = False
+            End Try
+        End Sub)
     End Sub
 
     Private Sub MarkSduDownloadItemRead(ItemBorder As Border, ItemId As String)

@@ -222,6 +222,7 @@
     <Compile Include="Modules\Sdu\SduDownloadItem.vb" />
     <Compile Include="Modules\Sdu\SduDownloadReadStore.vb" />
     <Compile Include="Modules\Sdu\SduModpackAdapter.vb" />
+    <Compile Include="Modules\Sdu\SduModpackInstaller.vb" />
     <Compile Include="Modules\Sdu\SduModpackService.vb" />
     <Compile Include="My Project\Resources.Designer.vb">
       <AutoGen>True</AutoGen>

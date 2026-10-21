@@ -19,7 +19,7 @@ Public Module SduModpackAdapter
     ''' 检测整合包结构并执行安装。Task 用于反馈安装进度（0~1）。
     ''' </summary>
     Public Sub AdaptAndInstall(DownloadedFile As String, Item As SduGameDownload, Task As LoaderTask(Of Integer, Integer))
-        Dim InstanceName As String = CreateSduInstanceName(Item)
+        Dim InstanceName As String = SduModpackInstaller.CreateSduInstanceName(Item)
         Logger.Info($"SDUcraft 整合包适配：{Item.Name} → 实例 {InstanceName}（{DownloadedFile}）")
 
         Dim Archive As ZipArchive = Nothing
@@ -249,7 +249,7 @@ Public Module SduModpackAdapter
     Private Sub OpenManualInstallFolder(DownloadedFile As String, Item As SduGameDownload)
         Dim Folder As String = Paths.Base & "SduDownload\"
         DirectoryUtils.Create(Folder)
-        Dim FileName As String = CreateSduInstanceName(Item) & PathUtils.GetExtension(DownloadedFile)
+        Dim FileName As String = SduModpackInstaller.CreateSduInstanceName(Item) & PathUtils.GetExtension(DownloadedFile)
         Dim Target As String = Folder & FileName
         If Not FileUtils.Exists(Target) Then FileUtils.Copy(DownloadedFile, Target)
         Logger.Info($"已复制整合包到手动安装目录：{Target}")
@@ -258,19 +258,5 @@ Public Module SduModpackAdapter
     End Sub
 
 #End Region
-
-    ''' <summary>
-    ''' 生成 SDUcraft 实例名（与 PageDownloadSdu 中一致）。
-    ''' </summary>
-    Private Function CreateSduInstanceName(Item As SduGameDownload) As String
-        Dim Name As String = Item.Name.Trim()
-        If Item.Version <> "" AndAlso Not Name.Contains(Item.Version) Then
-            Name &= " (" & Item.Version & ")"
-        End If
-        Name = System.Text.RegularExpressions.Regex.Replace(Name, "[\\/:*?""<>|!;\r\n\t]", "_").Trim("_"c, " "c)
-        If Name.Length > 64 Then Name = Name.Substring(0, 64).Trim("_"c, " "c)
-        If Name = "" Then Name = $"SDUcraft-{If(Item.Id = "", "Pack", Item.Id)}"
-        Return Name
-    End Function
 
 End Module
