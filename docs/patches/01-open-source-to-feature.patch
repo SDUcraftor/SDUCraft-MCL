@@ -1,0 +1,393 @@
+diff --git a/PCLCS/PCLCS.csproj b/PCLCS/PCLCS.csproj
+index f4a3203..9d08127 100644
+--- a/PCLCS/PCLCS.csproj
++++ b/PCLCS/PCLCS.csproj
+@@ -9,7 +9,7 @@
+ 		<AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
+ 		<Configurations>Debug;Release;Snapshot</Configurations>
+ 		<Deterministic>true</Deterministic>
+-		<LangVersion>13.0</LangVersion>
++		<LangVersion>12.0</LangVersion>
+ 		<Nullable>enable</Nullable>
+ 		<ImplicitUsings>enable</ImplicitUsings>
+ 	</PropertyGroup>
+@@ -66,6 +66,10 @@
+ 	  <Reference Include="Newtonsoft.Json">
+ 	    <HintPath>..\Plain Craft Launcher 2\Resources\Newtonsoft.Json.dll</HintPath>
+ 	  </Reference>
++    <Reference Include="netstandard">
++      <HintPath>$(FrameworkPathOverride)\Facades\netstandard.dll</HintPath>
++    </Reference>
+ 	</ItemGroup>
+ 
+ </Project>
++
+diff --git a/Plain Craft Launcher 2/FormMain.xaml.vb b/Plain Craft Launcher 2/FormMain.xaml.vb
+index d35da3a..2594eea 100644
+--- a/Plain Craft Launcher 2/FormMain.xaml.vb	
++++ b/Plain Craft Launcher 2/FormMain.xaml.vb	
+@@ -450,6 +450,7 @@ Public Class FormMain
+             '开源版本提示
+             If VersionBranchMain = "OpenSource" Then
+                 MyMsgBox($"该版本中无法使用以下特性：{vbCrLf}- CurseForge API 调用：需要自行申请 API Key，然后添加到 ModSecret.vb 的开头{vbCrLf}- 正版登录：需要自行向微软申请 Client ID，然后添加到 ModSecret.vb 的开头{vbCrLf}- 更新与联网通知：避免滥用隐患{vbCrLf}- 主题切换：这是需要赞助解锁的纪念性质的功能，别让赞助者太伤心啦……{vbCrLf}- 百宝箱：开发早期往里面塞了些开发工具，整理起来太麻烦了……", "开源版本说明")
++                RunInUi(Sub() FrmLaunchRight.RefreshSduDownloadPanel(), True)
+             End If
+         End Sub, "初始化", ThreadPriority.Lowest)
+ 
+diff --git a/Plain Craft Launcher 2/Modules/ModSecret.vb b/Plain Craft Launcher 2/Modules/ModSecret.vb
+index a8032f2..44f72ba 100644
+--- a/Plain Craft Launcher 2/Modules/ModSecret.vb	
++++ b/Plain Craft Launcher 2/Modules/ModSecret.vb	
+@@ -15,7 +15,7 @@ Friend Module ModSecret
+ 
+ #Region "网络鉴权"
+ 
+-    Public Const RestrictMcDownload As Boolean = True
++    Public Const RestrictMcDownload As Boolean = False
+     Friend Function SecretCdnSign(UrlWithMark As String) As String
+         If Not UrlWithMark.EndsWithF("{CDN}") Then Return UrlWithMark
+         Return UrlWithMark.Replace("{CDN}", "").Replace(" ", "%20")
+diff --git a/Plain Craft Launcher 2/Pages/PageLaunch/PageLaunchRight.xaml.vb b/Plain Craft Launcher 2/Pages/PageLaunch/PageLaunchRight.xaml.vb
+index 477ac66..204ceab 100644
+--- a/Plain Craft Launcher 2/Pages/PageLaunch/PageLaunchRight.xaml.vb	
++++ b/Plain Craft Launcher 2/Pages/PageLaunch/PageLaunchRight.xaml.vb	
+@@ -1,4 +1,6 @@
+ Imports System.Windows.Threading
++Imports System.Linq
++Imports Newtonsoft.Json.Linq
+ 
+ Public Class PageLaunchRight
+     Implements IRefreshable, IDispatcherUnhandledException
+@@ -30,6 +32,7 @@ Public Class PageLaunchRight
+         End Sub)
+     End Sub
+     Private Sub RefreshReal()
++        LoadSduDownloadPanel()
+         Dim Content As String = Nothing, Url As String = Nothing
+         Select Case Settings.Get(Of Integer)("UiCustomType")
+             Case 1
+@@ -154,6 +157,259 @@ Public Class PageLaunchRight
+         '同步到 UI
+         RunInUi(Sub() LoadContent(Content))
+     End Sub
++
++#Region "SDUcraft 下载面板"
++
++    Private Const SduDownloadApi As String = "https://www.sducraft.top/api/download/"
++    Private Const SduDownloadPage As String = "https://www.sducraft.top/downloads/game"
++    Private Const SduDownloadInitialCount As Integer = 5
++    Private Const SduDownloadPageSize As Integer = 3
++    Private _SduDownloadItems As List(Of JObject)
++    Private _SduDownloadCard As MyCard
++    Private _SduDownloadStatus As TextBlock
++    Private WithEvents _SduDownloadScroll As ScrollViewer
++    Private _SduDownloadStack As StackPanel
++    Private _SduReadIds As HashSet(Of String)
++    Private _SduDownloadRenderCount As Integer = 0
++    Private _SduDownloadLoadMoreLocked As Boolean = False
++    Private _SduDownloadLoading As Boolean = False
++
++    Private Sub LoadSduDownloadPanel()
++        _SduDownloadLoading = True
++        Try
++            Dim Response = NetRequestByClientRetry(SduDownloadApi)
++            Dim Items = JArray.Parse(Response).OfType(Of JObject)().
++                OrderByDescending(Function(Item) If(Item.Value(Of String)("modify_date"), Item.Value(Of String)("publish_date"))).
++                ToList()
++            _SduDownloadItems = Items
++            RunInUi(
++            Sub()
++                _SduDownloadRenderCount = 0
++                _SduDownloadLoadMoreLocked = False
++                RenderSduDownloadPanel()
++            End Sub, True)
++        Catch ex As Exception
++            Logger.Warn(ex, "加载 SDUcraft 下载面板失败")
++            RunInUi(Sub() RenderSduDownloadError(ex.Message), True)
++        Finally
++            _SduDownloadLoading = False
++        End Try
++    End Sub
++
++    ''' <summary>
++    ''' 在启动器通知关闭后立即加载面板，避免必须切换页面后才显示。
++    ''' </summary>
++    Public Sub RefreshSduDownloadPanel()
++        If _SduDownloadLoading OrElse (_SduDownloadCard IsNot Nothing AndAlso _SduDownloadItems IsNot Nothing) Then Return
++        RunInThread(AddressOf LoadSduDownloadPanel)
++    End Sub
++
++    Private Function SduReadIds() As HashSet(Of String)
++        Dim Result As New HashSet(Of String)
++        Try
++            Dim File As String = Paths.Base & "PCL\SduDownloadRead.txt"
++            If System.IO.File.Exists(File) Then
++                For Each Id In System.IO.File.ReadAllText(File).Split(","c)
++                    If Id.Trim() <> "" Then Result.Add(Id.Trim())
++                Next
++            End If
++        Catch
++        End Try
++        Return Result
++    End Function
++
++    Private Sub SaveSduReadIds(Ids As HashSet(Of String))
++        Try
++            System.IO.File.WriteAllText(Paths.Base & "PCL\SduDownloadRead.txt", String.Join(",", Ids))
++        Catch ex As Exception
++            Logger.Warn(ex, "保存 SDUcraft 下载面板已读记录失败")
++        End Try
++    End Sub
++
++    Private Sub RenderSduDownloadPanel()
++        If _SduDownloadItems Is Nothing Then Return
++        RemoveSduDownloadPanel()
++        _SduReadIds = SduReadIds()
++        _SduDownloadCard = New MyCard With {.Title = "SDUcraft 游戏下载速览", .Margin = New Thickness(0, 0, 0, 15), .Tag = "SduDownloadPanel"}
++        _SduDownloadStatus = New TextBlock With {
++            .FontSize = 11.5,
++            .Opacity = 0.65,
++            .Margin = New Thickness(20, 36, 20, 6)
++        }
++        _SduDownloadStack = New StackPanel
++        _SduDownloadScroll = New ScrollViewer With {
++            .MaxHeight = 318,
++            .Margin = New Thickness(20, 60, 20, 14),
++            .HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
++            .VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
++            .Content = _SduDownloadStack
++        }
++        _SduDownloadCard.Children.Add(_SduDownloadStatus)
++        _SduDownloadCard.Children.Add(_SduDownloadScroll)
++        PanCustom.Children.Insert(0, _SduDownloadCard)
++        AppendSduDownloadItems(SduDownloadInitialCount)
++        UpdateSduDownloadStatus()
++    End Sub
++
++    Private Sub AppendSduDownloadItems(Count As Integer)
++        If _SduDownloadItems Is Nothing OrElse _SduDownloadStack Is Nothing Then Return
++        Dim Total = _SduDownloadItems.Count
++        Dim Remaining = Total - _SduDownloadRenderCount
++        If Remaining <= 0 Then
++            UpdateSduDownloadStatus()
++            Return
++        End If
++        Dim Take = Math.Min(Count, Remaining)
++        For Index = _SduDownloadRenderCount To _SduDownloadRenderCount + Take - 1
++            _SduDownloadStack.Children.Add(CreateSduDownloadItemBorder(_SduDownloadItems(Index)))
++        Next
++        _SduDownloadRenderCount += Take
++        UpdateSduDownloadStatus()
++    End Sub
++
++    Private Sub UpdateSduDownloadStatus()
++        If _SduDownloadStatus Is Nothing OrElse _SduDownloadItems Is Nothing Then Return
++        Dim Total = _SduDownloadItems.Count
++        If _SduDownloadRenderCount < Total Then
++            _SduDownloadStatus.Text = $"已加载 {_SduDownloadRenderCount} / {Total} 条 · 向下滚动加载后 {Math.Min(SduDownloadPageSize, Total - _SduDownloadRenderCount)} 条 · 未读标为【新】"
++        Else
++            _SduDownloadStatus.Text = $"已加载全部 {Total} 条 · 点击条目打开下载页 · 未读标为【新】"
++        End If
++    End Sub
++
++    Private Sub SduDownloadScrollChanged(sender As Object, e As ScrollChangedEventArgs) Handles _SduDownloadScroll.ScrollChanged
++        If _SduDownloadItems Is Nothing OrElse _SduDownloadScroll Is Nothing Then Return
++        If _SduDownloadRenderCount >= _SduDownloadItems.Count Then
++            _SduDownloadLoadMoreLocked = False
++            Return
++        End If
++        Dim DistanceToBottom = _SduDownloadScroll.ScrollableHeight - _SduDownloadScroll.VerticalOffset
++        If DistanceToBottom > 28 Then
++            _SduDownloadLoadMoreLocked = False
++            Return
++        End If
++        If _SduDownloadLoadMoreLocked Then Return
++        _SduDownloadLoadMoreLocked = True
++        AppendSduDownloadItems(SduDownloadPageSize)
++    End Sub
++
++    Private Function CreateSduDownloadItemBorder(Item As JObject) As Border
++        Dim Id = If(Item("id") Is Nothing, If(Item("name"), "").ToString(), Item("id").ToString())
++        Dim Unread = Not String.IsNullOrEmpty(Id) AndAlso (_SduReadIds Is Nothing OrElse Not _SduReadIds.Contains(Id))
++        Dim Border As New Border With {
++            .Background = New SolidColorBrush(Color.FromRgb(255, 255, 255)),
++            .BorderBrush = New SolidColorBrush(Color.FromRgb(217, 225, 236)),
++            .BorderThickness = New Thickness(1),
++            .CornerRadius = New CornerRadius(5),
++            .Padding = New Thickness(10, 8, 10, 8),
++            .Margin = New Thickness(0, 0, 0, 8),
++            .Cursor = Cursors.Hand,
++            .Tag = Id
++        }
++        Dim TitleGrid As New Grid
++        Dim Title As New TextBlock With {
++            .Text = If(Item("name"), "未命名下载").ToString(),
++            .FontSize = 13,
++            .FontWeight = FontWeights.Bold,
++            .Foreground = New SolidColorBrush(Color.FromRgb(23, 48, 94)),
++            .TextWrapping = TextWrapping.Wrap,
++            .Margin = New Thickness(0, 0, If(Unread, 28, 0), 0)
++        }
++        TitleGrid.Children.Add(Title)
++        If Unread Then
++            Dim Badge As New Border With {
++                .Background = New SolidColorBrush(Color.FromRgb(229, 72, 77)),
++                .CornerRadius = New CornerRadius(3),
++                .Padding = New Thickness(5, 0, 5, 0),
++                .HorizontalAlignment = HorizontalAlignment.Right,
++                .VerticalAlignment = VerticalAlignment.Top,
++                .Child = New TextBlock With {.Text = "新", .Foreground = Brushes.White, .FontSize = 10.5, .FontWeight = FontWeights.Bold}
++            }
++            TitleGrid.Children.Add(Badge)
++        End If
++        Dim ItemStack As New StackPanel
++        ItemStack.Children.Add(TitleGrid)
++        Dim Meta = If(Item("publish_date"), "").ToString()
++        If Not String.IsNullOrWhiteSpace(Item("version")) Then Meta &= "    " & Item("version").ToString()
++        If Meta.Trim() <> "" Then
++            ItemStack.Children.Add(New TextBlock With {
++                .Text = Meta, .FontSize = 11.5, .Opacity = 0.68, .Margin = New Thickness(0, 2, 0, 0)
++            })
++        End If
++        Dim Intro = StripSduHtml(If(Item("intro"), "").ToString())
++        If Intro.Length > 75 Then Intro = Intro.Substring(0, 75) & "…"
++        If Intro <> "" Then
++            ItemStack.Children.Add(New TextBlock With {
++                .Text = Intro, .FontSize = 11.5, .Opacity = 0.82,
++                .TextWrapping = TextWrapping.Wrap, .MaxHeight = 34,
++                .TextTrimming = TextTrimming.CharacterEllipsis,
++                .Margin = New Thickness(0, 3, 0, 0)
++            })
++        End If
++        Border.Child = ItemStack
++        AddHandler Border.MouseLeftButtonUp, AddressOf SduDownloadItemClick
++        Return Border
++    End Function
++
++    Private Sub RenderSduDownloadError(Message As String)
++        RemoveSduDownloadPanel()
++        Dim Card As New MyCard With {.Title = "SDUcraft 游戏下载速览", .Margin = New Thickness(0, 0, 0, 15), .Tag = "SduDownloadPanel"}
++        Dim Text As New TextBlock With {
++            .Text = "读取失败：" & Message & vbCrLf & "请检查网络后刷新主页。",
++            .Margin = New Thickness(20, 36, 20, 14),
++            .TextWrapping = TextWrapping.Wrap
++        }
++        Card.Children.Add(Text)
++        PanCustom.Children.Insert(0, Card)
++    End Sub
++
++    Private Sub RemoveSduDownloadPanel()
++        For i = PanCustom.Children.Count - 1 To 0 Step -1
++            Dim Child = TryCast(PanCustom.Children(i), FrameworkElement)
++            If Child IsNot Nothing AndAlso Equals(Child.Tag, "SduDownloadPanel") Then PanCustom.Children.RemoveAt(i)
++        Next
++        _SduDownloadCard = Nothing
++        _SduDownloadStatus = Nothing
++        _SduDownloadScroll = Nothing
++        _SduDownloadStack = Nothing
++    End Sub
++
++    Private Sub SduDownloadItemClick(sender As Object, e As System.Windows.Input.MouseButtonEventArgs)
++        Dim Border = TryCast(sender, Border)
++        If Border Is Nothing Then Return
++        Dim Id = If(Border.Tag, "").ToString()
++        If Id <> "" Then
++            If _SduReadIds Is Nothing Then _SduReadIds = New HashSet(Of String)
++            If Not _SduReadIds.Contains(Id) Then
++                _SduReadIds.Add(Id)
++                SaveSduReadIds(_SduReadIds)
++                MarkSduDownloadItemRead(Border)
++            End If
++        End If
++        OpenWebsite(SduDownloadPage)
++    End Sub
++
++    Private Sub MarkSduDownloadItemRead(Border As Border)
++        Dim Stack = TryCast(Border.Child, StackPanel)
++        If Stack Is Nothing OrElse Stack.Children.Count = 0 Then Return
++        Dim TitleGrid = TryCast(Stack.Children(0), Grid)
++        If TitleGrid Is Nothing Then Return
++        If TitleGrid.Children.Count > 1 Then TitleGrid.Children.RemoveAt(1)
++        If TitleGrid.Children.Count > 0 Then
++            Dim Title = TryCast(TitleGrid.Children(0), TextBlock)
++            If Title IsNot Nothing Then Title.Margin = New Thickness(0, 0, 0, 0)
++        End If
++    End Sub
++
++    Private Function StripSduHtml(Text As String) As String
++        If String.IsNullOrWhiteSpace(Text) Then Return ""
++        Dim Result = System.Text.RegularExpressions.Regex.Replace(Text, "<[^>]+>", " ")
++        Result = Result.Replace("&nbsp;", " ").Replace("&amp;", "&").
++            Replace("&lt;", "<").Replace("&gt;", ">").Replace("&quot;", """")
++        Return System.Text.RegularExpressions.Regex.Replace(Result, "\s+", " ").Trim()
++    End Function
++
++#End Region
+     Private RefreshLock As New Object
+ 
+     '联网获取主页文件
+@@ -239,7 +495,11 @@ Public Class PageLaunchRight
+                 If Hash = LoadedContentHash Then Return
+                 LoadedContentHash = Hash
+                 '实际加载内容
+-                PanCustom.Children.Clear()
++                '只清空自定义主页内容，保留已加载的 SDUcraft 下载面板
++                For i = PanCustom.Children.Count - 1 To 0 Step -1
++                    Dim Child = TryCast(PanCustom.Children(i), FrameworkElement)
++                    If Child Is Nothing OrElse Not Equals(Child.Tag, "SduDownloadPanel") Then PanCustom.Children.RemoveAt(i)
++                Next
+                 If String.IsNullOrWhiteSpace(Content) Then
+                     Logger.Info($"实例化：清空主页 UI，来源为空")
+                     Return
+@@ -291,3 +551,4 @@ Public Class PageLaunchRight
+ #End Region
+ 
+ End Class
++
+diff --git a/Plain Craft Launcher 2/Plain Craft Launcher 2.vbproj b/Plain Craft Launcher 2/Plain Craft Launcher 2.vbproj
+index 65b544b..858e221 100644
+--- a/Plain Craft Launcher 2/Plain Craft Launcher 2.vbproj	
++++ b/Plain Craft Launcher 2/Plain Craft Launcher 2.vbproj	
+@@ -913,19 +913,22 @@
+     <None Include="Resources\lwjgl-unsafe-agent.jar" />
+   </ItemGroup>
+   <ItemGroup>
+-    <ProjectReference Include="..\MeloongCore\Shared\MeloongCore.csproj">
+-      <Project>{d22bbf3c-2177-0208-4e29-8466aa41ac6f}</Project>
+-      <Name>MeloongCore</Name>
+-    </ProjectReference>
+-    <ProjectReference Include="..\MeloongCore\Wpf\MeloongCore.Wpf.csproj">
+-      <Project>{2dffe2a0-1101-816b-d240-f644b2d74a68}</Project>
+-      <Name>MeloongCore.Wpf</Name>
+-    </ProjectReference>
+-    <ProjectReference Include="..\PCLCS\PCLCS.csproj">
+-      <Project>{32de4aaf-f4d6-42c5-9604-19236de96c69}</Project>
+-      <Name>PCLCS</Name>
+-      <Private>True</Private>
+-    </ProjectReference>
++    <Reference Include="MeloongCore">
++      <HintPath>..\PCLCS\bin\MeloongCore.dll</HintPath>
++      <Private>False</Private>
++    </Reference>
++    <Reference Include="MeloongCore.Wpf">
++      <HintPath>..\PCLCS\bin\MeloongCore.Wpf.dll</HintPath>
++      <Private>False</Private>
++    </Reference>
++    <Reference Include="PCLCS">
++      <HintPath>..\PCLCS\bin\PCLCS.dll</HintPath>
++      <Private>False</Private>
++    </Reference>
++    <Reference Include="netstandard">
++      <HintPath>$(FrameworkPathOverride)\Facades\netstandard.dll</HintPath>
++      <Private>False</Private>
++    </Reference>
+   </ItemGroup>
+   <ItemGroup>
+     <None Include="..\PCLCS\bin\PCLCS.dll">
+@@ -951,4 +954,4 @@
+ 
+   </ItemGroup>
+   <Import Project="$(MSBuildToolsPath)\Microsoft.VisualBasic.targets" />
+-</Project>
+\ No newline at end of file
++</Project>
