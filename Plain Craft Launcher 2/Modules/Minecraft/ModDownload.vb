@@ -1200,6 +1200,11 @@ Public Module ModDownload
         Dim Errors As New List(Of Exception)
         For Each Source In Urls
             Try
+                If Source.Url.Contains("api.curseforge.com") AndAlso CurseForgeAPIKey = "" Then
+                    '未配置 API Key 时给出明确指引；若镜像可用则自动回落镜像
+                    Throw New Exception("尚未配置 CurseForge API Key：请打开 console.curseforge.com 免费申请（通常即时通过），" &
+                                        "填入 Modules\ModSecret.vb 的 CurseForgeAPIKey，或设置环境变量 PCL_CURSEFORGE_API_KEY 后重启启动器")
+                End If
                 Return NetRequestByClient(Source.Url, Method, Content, ContentType, Timeout:=Source.Timeout * 1000, Encoding:=Encoding.UTF8, RequireJson:=True).DeserializeJson()
             Catch ex As Exception
                 Errors.Add(ex)

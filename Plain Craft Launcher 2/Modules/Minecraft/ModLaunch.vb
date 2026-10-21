@@ -882,6 +882,19 @@ LoginFinish:
     Private Function MsLoginStep1New(Data As LoaderTask(Of McLoginMs, McLoginResult)) As (OAuthAccessToken As String, OAuthRefreshToken As String)
         '参考：https://learn.microsoft.com/zh-cn/entra/identity-platform/v2-oauth2-device-code
 
+        '未配置 Client ID 时给出明确指引，而不是让用户看到微软返回的晦涩错误
+        If OAuthClientId = "" Then
+            MyMsgBox($"尚未配置微软登录 Client ID，无法进行正版登录。{vbCrLf}免费申请（约 5 分钟）：{vbCrLf}" &
+                     $"1. 打开 portal.azure.com 并登录你的微软账号{Environment.NewLine}" &
+                     $"2. 搜索并进入「应用注册」(App registrations)，点击「新注册」{Environment.NewLine}" &
+                     $"3. 名称随意（如 SDUCraft-MCL），受支持的账户类型选择「仅个人 Microsoft 账户」{Environment.NewLine}" &
+                     $"4. 重定向 URI 选「公共客户端/本机(移动和桌面)」，填 https://login.microsoftonline.com/common/oauth2/nativeclient{Environment.NewLine}" &
+                     $"5. 注册后在「身份验证」开启「允许公共客户端流」并保存{Environment.NewLine}" &
+                     $"6. 复制「应用程序(客户端) ID」，填入 Modules\ModSecret.vb 的 OAuthClientId，或设置环境变量 PCL_MS_CLIENT_ID 后重启启动器",
+                     "正版登录未配置", "我知道了", IsWarn:=True)
+            Throw New OperationCanceledException
+        End If
+
         '初始请求
 Retry:
         McLaunchLog("开始微软登录步骤 1/6（原始登录）")

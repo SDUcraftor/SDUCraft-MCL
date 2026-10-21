@@ -107,6 +107,30 @@
                     </Grid>
                 </StackPanel>
             </local:MyCard>
+            <local:MyCard Margin="0,0,0,15" Title="SDUcraft 接入配置">
+                <StackPanel Margin="25,40,25,25">
+                    <local:MyHint Text="以下密钥均为可选配置：微软登录 Client ID 用于正版登录，CurseForge API Key 用于从 CurseForge 获取模组信息与下载。&#xa;均可在对应官网免费申请，留空时使用内置配置或环境变量。" Theme="Blue" Margin="0,0,0,10" />
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" SharedSizeGroup="Name" />
+                            <ColumnDefinition Width="1*" />
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="9" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+                        <TextBlock VerticalAlignment="Center" HorizontalAlignment="Left" Text="微软登录 Client ID" Margin="0,0,25,0" />
+                        <local:MyTextBox local:SettingService.Key="SduMsClientId"
+                                         Grid.Column="1" MaxLength="128" HintText="留空则使用内置/环境变量配置"
+                                         ToolTip="用于正版登录的微软应用客户端 ID。&#xa;免费申请：portal.azure.com → 应用注册 → 新注册（仅个人 Microsoft 账户）→ 开启“允许公共客户端流”。&#xa;留空时使用环境变量 PCL_MS_CLIENT_ID。" />
+                        <TextBlock Grid.Row="2" VerticalAlignment="Center" HorizontalAlignment="Left" Text="CurseForge API Key" Margin="0,0,25,0" />
+                        <local:MyTextBox local:SettingService.Key="SduCurseForgeAPIKey"
+                                         Grid.Row="2" Grid.Column="1" MaxLength="128" HintText="留空则使用内置/环境变量配置"
+                                         ToolTip="CurseForge 开放平台 API Key。&#xa;免费申请：console.curseforge.com → API Keys（通常即时通过）。&#xa;留空时使用环境变量 PCL_CURSEFORGE_API_KEY。" />
+                    </Grid>
+                </StackPanel>
+            </local:MyCard>
             <local:MyCard Margin="0,0,0,15" Title="内存分配">
                 <StackPanel Margin="25,40,25,15">
                     <Grid Margin="0,0,0,3">

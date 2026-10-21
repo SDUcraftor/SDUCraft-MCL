@@ -123,6 +123,8 @@ Public Class Settings
         New Setting("ToolDownloadCert", False, Source:=Sources.Registry, OnChanged:=AddressOf ModNet.ShouldValidateSslCertificateOnLogin),
         New Setting("ToolDownloadMod", 2, Source:=Sources.Registry),
         New Setting("ToolModLocalNameStyle", 0, Source:=Sources.Registry),
+        New Setting("SduMsClientId", "", Source:=Sources.Registry),
+        New Setting("SduCurseForgeAPIKey", "", Source:=Sources.Registry),
         New Setting("ToolUpdateRelease", False, Source:=Sources.Registry),
         New Setting("ToolUpdateSnapshot", False, Source:=Sources.Registry),
         New Setting("ToolUpdateReleaseLast", "", Source:=Sources.Registry),
