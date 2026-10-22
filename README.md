@@ -40,6 +40,7 @@ Modules\Sdu\SduDownloadItem.vb          下载项数据模型、JSON 解析、HT
 Modules\Sdu\SduDownloadReadStore.vb     已读状态持久化
 Modules\Sdu\SduModpackService.vb        整合包 / 下载文件 API 的类型化访问、HTTPS 白名单过滤
 Modules\Sdu\SduModpackAdapter.vb        下载后适配：提取内层 mrpack、裸客户端重打包
+Modules\Sdu\SduBareClientInstaller.vb  裸客户端隔离安装、仅同步 mods、备份与失败恢复
 Pages\PageLaunch\PageLaunchRight.SduDownloadPanel.vb   面板 UI 与交互
 Pages\PageDownload\PageDownloadSdu.vb   内置整合包下载页
 ```
@@ -47,6 +48,22 @@ Pages\PageDownload\PageDownloadSdu.vb   内置整合包下载页
 启动页原文件只保留原有主页职责，面板常量、字段、方法统一使用 `SduDownload` 前缀。
 
 更多细节见 [`MODIFICATIONS.md`](MODIFICATIONS.md) 与 [`docs/patches/`](docs/patches)。
+
+### 裸客户端安装与更新
+
+- 首次安装先在游戏目录内暂存、校验，再移动为 `versions/<网站实例名>`。主 JSON、主 JAR、原生库目录及 JSON 的自身 `jar` 引用随实例名统一。
+- 根级 `mods/config/saves/resourcepacks/shaderpacks/options.txt` 等游戏内容写入实例目录并开启版本隔离；只有根级 `libraries/assets` 使用公共缓存。已有公共缓存内容不同时停止安装，不覆盖原文件。
+- 目标实例已存在时，仅将 `mods` 与新版包同步。新版包没有的旧模组从当前 `mods` 移出，配置、存档、截图、资源包、游戏 JSON/JAR、PCL 设置和公共依赖均保持原样。没有任何 `mods` 文件的包不会清空已有模组。
+- 更新前旧 `mods` 整体备份至 `<Minecraft目录>/PCL/SduModBackups/<实例名>/<UTC时间>-<唯一编号>/mods`。切换失败时尝试恢复；恢复被权限或占用阻止时，保留备份并在异常中给出路径。取消或解包失败只清理本次暂存目录。
+- 首次安装记录官网项目 ID，官网标题或版本号改变后仍定位原实例。旧版未带 `PCL/SduPack.json` 标记的实例只按完整实例名匹配，不猜测或迁移其他目录。
+- 多版本裸客户端包无法唯一确定安装目标时转为手动处理。此处的“仅更新 mods”针对裸客户端包；标准 `mrpack/CurseForge/MCBBS/HMCL/MMC` 仍由官方安装器处理首次安装，已有同名实例时停止，避免官方安装流程覆盖其配置或游戏文件。
+
+回归测试使用临时 ZIP 和临时游戏目录，不操作真实游戏数据：
+
+```powershell
+.\tests\Run-SduBareClientTests.ps1
+.\tests\Run-SduLoaderBridgeTests.ps1
+```
 
 ## 构建
 

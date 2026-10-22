@@ -1,6 +1,5 @@
 Imports System.IO
 Imports System.IO.Compression
-Imports System.Text.RegularExpressions
 
 ''' <summary>
 ''' SDUcraft 整合包适配器：先检测官网包结构，再按结构分派安装。
@@ -8,7 +7,7 @@ Imports System.Text.RegularExpressions
 '''  - mrpack/Modrinth（modrinth.index.json，根或一级目录）：交给 ModpackInstall。
 '''  - 带启动器压缩包（modpack.mrpack / modpack.zip）：提取内层 mrpack 后交给 ModpackInstall。
 '''  - CurseForge/MCBBS/HMCL/MMC（manifest.json、mcbbs.packmeta、modpack.json、mmc-pack.json）：交给 ModpackInstall 自动识别。
-'''  - 裸客户端整包（含 .minecraft/versions/名/名.json）：直接解压进默认 .minecraft，写入 PCL 版本隔离配置。
+'''  - 裸客户端整包：首次安装暂存后发布隔离实例；已有实例仅同步 mods，并备份旧 mods。
 '''  - 纯资源包（pack.mcmeta + pack.png）：拒绝安装。
 ''' 未知结构：把下载包复制到 PCL 目录下的 SduDownload 文件夹并打开资源管理器，让用户手动安装。
 ''' 此函数必须在工作线程中调用。
@@ -18,8 +17,7 @@ Public Module SduModpackAdapter
     ''' <summary>
     ''' 检测整合包结构并执行安装。Task 用于反馈安装进度（0~1）。
     ''' </summary>
-    Public Sub AdaptAndInstall(DownloadedFile As String, Item As SduGameDownload, Task As LoaderTask(Of Integer, Integer))
-        Dim InstanceName As String = SduModpackInstaller.CreateSduInstanceName(Item)
+    Public Sub AdaptAndInstall(DownloadedFile As String, Item As SduGameDownload, Task As LoaderTask(Of Integer, Integer), InstanceName As String, McFolder As String)
         Logger.Info($"SDUcraft 整合包适配：{Item.Name} → 实例 {InstanceName}（{DownloadedFile}）")
 
         Dim Archive As ZipArchive = Nothing
@@ -39,7 +37,7 @@ Public Module SduModpackAdapter
                 Logger.Info("检测到 Modrinth/mrpack 整合包，直接安装")
                 Archive.Dispose()
                 Archive = Nothing
-                SduLoaderBridge.WaitForCompletion(ModpackInstall(DownloadedFile, InstanceName), Task)
+                InstallKnownPack(DownloadedFile, InstanceName, McFolder, Task)
                 Return
             End If
 
@@ -64,7 +62,7 @@ Public Module SduModpackAdapter
                 Archive.Dispose()
                 Archive = Nothing
                 Logger.Info($"内层 modpack.mrpack 已提取至：{MrpackPath}")
-                SduLoaderBridge.WaitForCompletion(ModpackInstall(MrpackPath, InstanceName), Task)
+                InstallKnownPack(MrpackPath, InstanceName, McFolder, Task)
                 Return
             End If
 
@@ -75,18 +73,36 @@ Public Module SduModpackAdapter
                 Logger.Info("检测到 CurseForge/MCBBS/HMCL/MMC 类整合包，交由 ModpackInstall 识别安装")
                 Archive.Dispose()
                 Archive = Nothing
-                SduLoaderBridge.WaitForCompletion(ModpackInstall(DownloadedFile, InstanceName), Task)
+                InstallKnownPack(DownloadedFile, InstanceName, McFolder, Task)
                 Return
             End If
 
             '------------------------------------------------------------------
             ' 4. 裸客户端整包（.minecraft/versions/<名>/<名>.json）
             '------------------------------------------------------------------
-            Dim McBase As String = FindMcBase(Entries)
-            If McBase <> "" Then
-                Dim VersionName As String = GetVersionNameFromMcBase(Entries)
-                Logger.Info($"检测到裸客户端整包，.minecraft 前缀：{McBase}，版本名：{VersionName}")
-                InstallBareClientToDefaultMc(Archive, McBase, VersionName, Task)
+            Dim Layout = SduBareClientInstaller.Detect(Archive)
+            If Layout IsNot Nothing Then
+                If McInstanceLock.IsLocked(New McInstance(Path.Combine(McFolder, "versions", InstanceName))) Then
+                    Throw New IOException("该实例正在启动或运行，请关闭游戏后再更新模组。")
+                End If
+                Logger.Info($"检测到裸客户端整包，原版本：{Layout.VersionName}，安装实例：{InstanceName}")
+                Dim Result = SduBareClientInstaller.Install(Archive, Layout, McFolder, InstanceName, Task.CreateCancellationToken(),
+                    Sub(VersionStage)
+                        Dim IniPath = VersionStage & "PCL\Setup.ini"
+                        WriteIni(IniPath, "VersionArgumentIndie", 1)
+                        WriteIni(IniPath, "VersionArgumentIndieV2", True)
+                        IniClearCache(IniPath)
+                        Dim Marker As New JObject From {{"sduProjectId", Item.Id}}
+                        File.WriteAllText(VersionStage & "PCL\SduPack.json", Marker.ToString(), New System.Text.UTF8Encoding(False))
+                    End Sub, Sub(Value) Task.Progress = Value)
+                If Result.UpdatedMods Then
+                    Logger.Info($"已仅更新 {InstanceName} 的 mods，旧模组备份：{If(Result.ModsBackup, "原实例没有 mods 目录")}")
+                    Hint($"{InstanceName} 的模组已更新。" & If(Result.ModsBackup Is Nothing, "", vbCrLf & "旧模组备份：" & Result.ModsBackup), HintType.Blue)
+                Else
+                    Logger.Info($"裸客户端已安装至 {Result.InstanceFolder}（已开启版本隔离）")
+                End If
+                LoaderFolderRun(McInstanceListLoader, McFolder, LoaderFolderRunType.ForceRun, MaxDepth:=1, ExtraPath:="versions\", WaitForExit:=True)
+                Logger.Info($"版本列表已刷新，{InstanceName} 已可用")
                 Return
             End If
 
@@ -100,7 +116,9 @@ Public Module SduModpackAdapter
         Catch ex As Exception
             If ex.IsCanceled Then
                 Throw
-            ElseIf ex.Message.Contains("Error.WinIOError") OrElse TypeOf ex Is InvalidDataException Then
+            ElseIf TypeOf ex Is InvalidDataException Then
+                Throw New Exception("整合包无法自动安装：" & ex.Message, ex)
+            ElseIf ex.Message.Contains("Error.WinIOError") Then
                 Throw New Exception("整合包文件已损坏或不是 zip/mrpack 格式：" & PathUtils.GetLastPart(DownloadedFile), ex)
             End If
             Throw
@@ -109,6 +127,16 @@ Public Module SduModpackAdapter
                 Try : Archive.Dispose() : Catch : End Try
             End If
         End Try
+    End Sub
+
+    Private Sub InstallKnownPack(FilePath As String, InstanceName As String, McFolder As String, Task As LoaderTask(Of Integer, Integer))
+        Dim Target = Path.Combine(McFolder, "versions", InstanceName)
+        '标准格式的官方安装器会复制 overrides/配置及重建游戏文件，不能当成“仅更新 mods”。
+        If Directory.Exists(Target) OrElse File.Exists(Target) Then
+            Throw New IOException("此格式暂不支持仅更新 mods，已停止安装以保留现有实例。请手动更新 mods，或先重命名旧实例后全新安装：" & InstanceName)
+        End If
+        If Not PathUtils.IsSame(McFolder, McFolderSelected) Then Throw New IOException("安装期间切换了 Minecraft 文件夹，请重新发起安装。")
+        SduLoaderBridge.WaitForCompletion(ModpackInstall(FilePath, InstanceName), Task)
     End Sub
 
 #Region "结构检测"
@@ -136,108 +164,6 @@ Public Module SduModpackAdapter
     Private Function ContainsRoot(Entries As List(Of String), FileName As String) As Boolean
         Return Entries.Any(Function(Entry) Entry.Equals(FileName, StringComparison.OrdinalIgnoreCase))
     End Function
-
-    ''' <summary>
-    ''' 查找 .minecraft 根目录前缀：匹配形如 “包裹/.minecraft/versions/名/名.json” 的条目。
-    ''' 返回 .minecraft 目录在压缩包内的前缀（如 “SDUcraft_4thclient/.minecraft/”），未找到返回空串。
-    ''' </summary>
-    Private Function FindMcBase(Entries As List(Of String)) As String
-        Dim Regex As New Regex("^.*\/(?=versions\/(?<ver>[^\/]+)\/(\k<ver>)\.json$)", RegexOptions.IgnoreCase)
-        For Each Entry In Entries
-            Dim Match As Match = Regex.Match("/" & Entry)
-            If Match.Success Then Return Match.Value.TrimStart("/"c)
-        Next
-        Return ""
-    End Function
-
-    ''' <summary>从 .minecraft 前缀命中的条目中提取版本文件夹名。</summary>
-    Private Function GetVersionNameFromMcBase(Entries As List(Of String)) As String
-        Dim Regex As New Regex("^.*\/(?=versions\/(?<ver>[^\/]+)\/(\k<ver>)\.json$)", RegexOptions.IgnoreCase)
-        For Each Entry In Entries
-            Dim Match As Match = Regex.Match("/" & Entry)
-            If Match.Success Then Return Match.Groups("ver").Value
-        Next
-        Return ""
-    End Function
-
-#End Region
-
-#Region "裸客户端整包自动安装"
-
-    ''' <summary>
-    ''' 把裸客户端整包解压进当前默认 Minecraft 目录（.minecraft）：
-    '''  - versions/名/ 完整解压到 McFolder\versions\名\（如已存在同名版本则删除后重装）；
-    '''  - 其余内容（libraries、assets、mods、config 等）合并复制，已存在的文件不覆盖；
-    '''  - 写入 PCL\Setup.ini 开启版本隔离。
-    ''' </summary>
-    Private Sub InstallBareClientToDefaultMc(Archive As ZipArchive, McBase As String, VersionName As String, Task As LoaderTask(Of Integer, Integer))
-        Dim McFolder As String = PathUtils.AddSlashSuffix(McFolderSelected)
-        Dim TargetVersion As String = McFolder & "versions\" & VersionName & "\"
-        Dim VersionPrefix As String = McBase & "versions/" & VersionName & "/"
-
-        '删除已存在的同名版本，保证重装时不会残留旧文件
-        If DirectoryUtils.Exists(TargetVersion) Then
-            Logger.Info($"删除已存在的版本文件夹：{TargetVersion}")
-            DirectoryUtils.Delete(TargetVersion)
-        End If
-
-        '计划复制：版本文件夹（覆盖式）+ 其余内容（合并式，跳过已存在文件）
-        Dim Files As New List(Of ZipArchiveEntry)
-        For Each Entry As ZipArchiveEntry In Archive.Entries
-            Dim Name As String = Entry.FullName.Replace("\"c, "/"c)
-            If Name.EndsWith("/") Then Continue For
-            If Name.StartsWith(McBase & "versions/", StringComparison.OrdinalIgnoreCase) AndAlso
-               Not Name.StartsWith(VersionPrefix, StringComparison.OrdinalIgnoreCase) Then
-                '其他版本目录不复制
-                Continue For
-            End If
-            If Name.StartsWith(McBase, StringComparison.OrdinalIgnoreCase) Then Files.Add(Entry)
-        Next
-
-        Dim TotalBytes As Long = 0
-        For Each Entry In Files
-            TotalBytes += Math.Max(0, Entry.Length)
-        Next
-        Logger.Info($"裸客户端安装：{Files.Count} 个文件，共 {TotalBytes / 1024 / 1024:0.##} MB")
-
-        Dim Token As CancellationToken = Task.CreateCancellationToken()
-        Dim DoneBytes As Long = 0
-        For Each Entry In Files
-            Token.ThrowIfCancellationRequested()
-
-            Dim Name As String = Entry.FullName.Replace("\"c, "/"c)
-            Dim Relative As String = Name.Substring(McBase.Length).Replace("/"c, "\"c)
-            Dim IsVersion As Boolean = Name.StartsWith(VersionPrefix, StringComparison.OrdinalIgnoreCase)
-            Dim Target As String
-            If IsVersion Then
-                Target = TargetVersion & Relative.Substring(("versions/" & VersionName & "/").Length)
-            Else
-                Target = McFolder & Relative
-            End If
-
-            '合并模式：目标文件已存在则跳过（不覆盖用户已有文件）
-            If Not IsVersion AndAlso FileUtils.Exists(Target) Then Continue For
-
-            DirectoryUtils.Create(PathUtils.RemoveLastPart(Target))
-            Using Stream As Stream = Entry.Open()
-                FileUtils.Write(Target, Stream)
-            End Using
-
-            DoneBytes += Entry.Length
-            If TotalBytes > 0 Then Task.Progress = DoneBytes / TotalBytes
-        Next
-
-        '开启版本隔离
-        DirectoryUtils.Create(TargetVersion & "PCL\")
-        Dim IniPath As String = TargetVersion & "PCL\Setup.ini"
-        WriteIni(IniPath, "VersionArgumentIndie", 1)
-        WriteIni(IniPath, "VersionArgumentIndieV2", True)
-        Logger.Info($"裸客户端已安装至 {TargetVersion}（已开启版本隔离）")
-
-        '刷新版本列表
-        LoaderFolderRun(McInstanceListLoader, McFolderSelected, LoaderFolderRunType.ForceRun, MaxDepth:=1, ExtraPath:="versions\", WaitForExit:=True)
-        Logger.Info($"版本列表已刷新，{VersionName} 已可用")
-    End Sub
 
 #End Region
 

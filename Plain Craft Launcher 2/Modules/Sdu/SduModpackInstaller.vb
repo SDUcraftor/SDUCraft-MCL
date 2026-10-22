@@ -16,7 +16,8 @@ Public Module SduModpackInstaller
         End If
 
         Dim GameId As String = If(Item.Id = "", GetUuid().ToString("N"), Item.Id)
-        Dim InstanceName As String = CreateSduInstanceName(Item)
+        Dim McFolder As String = PathUtils.AddSlashSuffix(McFolderSelected)
+        Dim InstanceName As String = SduBareClientInstaller.ResolveInstanceName(McFolder, Item.Id, CreateSduInstanceName(Item))
 
         ' 下载文件（mrpack 或 zip，按 URL 后缀取名，适配器会按内容识别）
         Dim Extension As String = If(DownloadFile.FileUrl.EndsWithF(".mrpack", True), "mrpack", "zip")
@@ -42,7 +43,7 @@ Public Module SduModpackInstaller
         ' 步骤 2：检测包结构并安装（适配器按结构分派，进度由 Task 反馈）
         Loaders.Add(New LoaderTask(Of Integer, Integer)("安装整合包",
         Sub(Task)
-            SduModpackAdapter.AdaptAndInstall(LocalFile, Item, Task)
+            SduModpackAdapter.AdaptAndInstall(LocalFile, Item, Task, InstanceName, McFolder)
         End Sub) With {.ProgressWeight = 10})
 
         ' 启动加载器，显示进度到任务栏
@@ -61,7 +62,7 @@ Public Module SduModpackInstaller
             End Sub
         }
         ' 安装到默认 .minecraft/versions/<实例名> 目录，由 PCL 自动版本隔离
-        Loader.Start(McFolderSelected & "versions\" & InstanceName & "\")
+        Loader.Start(McFolder & "versions\" & InstanceName & "\")
 
         ' UI 操作必须在 UI 线程执行
         RunInUi(Sub()
@@ -103,10 +104,7 @@ Public Module SduModpackInstaller
         If Item.Version <> "" AndAlso Not Name.Contains(Item.Version) Then
             Name &= " (" & Item.Version & ")"
         End If
-        Name = System.Text.RegularExpressions.Regex.Replace(Name, "[\\/:*?""<>|!;\r\n\t]", "_").Trim("_"c, " "c)
-        If Name.Length > 64 Then Name = Name.Substring(0, 64).Trim("_"c, " "c)
-        If Name = "" Then Name = $"SDUcraft-{If(Item.Id = "", "Pack", Item.Id)}"
-        Return Name
+        Return SduBareClientInstaller.SafeInstanceName(Name, $"SDUcraft-{If(Item.Id = "", "Pack", Item.Id)}")
     End Function
 
 End Module

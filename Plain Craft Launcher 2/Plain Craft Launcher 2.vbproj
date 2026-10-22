@@ -222,6 +222,7 @@
     <Compile Include="Modules\Sdu\SduDownloadItem.vb" />
     <Compile Include="Modules\Sdu\SduDownloadReadStore.vb" />
     <Compile Include="Modules\Sdu\SduLoaderBridge.vb" />
+    <Compile Include="Modules\Sdu\SduBareClientInstaller.vb" />
     <Compile Include="Modules\Sdu\SduModpackAdapter.vb" />
     <Compile Include="Modules\Sdu\SduModpackInstaller.vb" />
     <Compile Include="Modules\Sdu\SduModpackService.vb" />
