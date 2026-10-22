@@ -2128,15 +2128,18 @@ Retry:
     ''' 安装加载器状态改变后进行提示和重载文件夹列表的方法。
     ''' </summary>
     Public Sub McInstallState(Loader As LoaderBase)
+        McInstallState(Loader, ShowNotifications:=True)
+    End Sub
+    Public Sub McInstallState(Loader As LoaderBase, ShowNotifications As Boolean)
         Select Case Loader.State
             Case LoadState.Finished
                 WriteIni(McFolderSelected & "PCL.ini", "InstanceCache", "") '清空缓存（合并安装会先生成文件夹，这会在刷新时误判为可以使用缓存）
-                Hint(Loader.Name & "成功！", HintType.Green)
+                If ShowNotifications Then Hint(Loader.Name & "成功！", HintType.Green)
                 'TODO: 自动选择安装成功的版本
             Case LoadState.Failed
-                MyMsgBox(Loader.Error.GetDisplay(True), Loader.Name & "失败", IsWarn:=True)
+                If ShowNotifications Then MyMsgBox(Loader.Error.GetDisplay(True), Loader.Name & "失败", IsWarn:=True)
             Case LoadState.Canceled
-                Hint(Loader.Name & "已取消！", HintType.Blue)
+                If ShowNotifications Then Hint(Loader.Name & "已取消！", HintType.Blue)
             Case LoadState.Loading
                 Return '不重新加载版本列表
         End Select

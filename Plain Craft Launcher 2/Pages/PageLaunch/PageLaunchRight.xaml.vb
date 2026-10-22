@@ -209,6 +209,7 @@ Partial Public Class PageLaunchRight
     Public Sub ForceRefresh() Implements IRefreshable.Refresh
         Logger.Info("要求强制刷新主页")
         ClearCache()
+        RefreshSduDownloadPanel(Force:=True)
         '实际的刷新
         If FrmMain.PageCurrent.Page = FormMain.PageType.Launch Then
             PanBack.ScrollToHome()

@@ -27,8 +27,10 @@ Public Module ModModpack
     ''' <summary>
     ''' 构建并启动安装给定的整合包文件的加载器，并返回该加载器。若失败则抛出异常。
     ''' 必须在工作线程执行。
+    ''' SDU 外层任务统一通知时可将 ShowNotifications 设为 False，子任务仍保留清理和刷新逻辑。
     ''' </summary>
-    Public Function ModpackInstall(File As String, Optional InstanceName As String = Nothing, Optional Logo As String = Nothing) As LoaderCombo(Of String)
+    Public Function ModpackInstall(File As String, Optional InstanceName As String = Nothing, Optional Logo As String = Nothing,
+                                   Optional ShowNotifications As Boolean = True) As LoaderCombo(Of String)
         Logger.Info($"整合包安装请求：{If(File, "null")}")
         Dim Archive As ZipArchive = Nothing
         Dim ArchiveBaseFolder As String = ""
@@ -41,30 +43,30 @@ Public Module ModModpack
             Try
                 Archive = FileUtils.OpenZip(File)
                 '从根目录判断整合包类型
-                If Archive.GetEntry("mcbbs.packmeta") IsNot Nothing Then PackType = 3 : Exit Try 'MCBBS 整合包（优先于 manifest.json 判断）
-                If Archive.GetEntry("mmc-pack.json") IsNot Nothing Then PackType = 2 : Exit Try 'MMC 整合包（优先于 manifest.json 判断，#4194）
-                If Archive.GetEntry("modrinth.index.json") IsNot Nothing Then PackType = 4 : Exit Try 'Modrinth 整合包
-                If Archive.GetEntry("manifest.json") IsNot Nothing Then
-                    Dim Json As JObject = Archive.GetEntry("manifest.json").Open().ReadString(Encoding.UTF8).DeserializeJson()
+                If SduPackageFiles.FindEntry(Archive, "mcbbs.packmeta") IsNot Nothing Then PackType = 3 : Exit Try 'MCBBS 整合包（优先于 manifest.json 判断）
+                If SduPackageFiles.FindEntry(Archive, "mmc-pack.json") IsNot Nothing Then PackType = 2 : Exit Try 'MMC 整合包（优先于 manifest.json 判断，#4194）
+                If SduPackageFiles.FindEntry(Archive, "modrinth.index.json") IsNot Nothing Then PackType = 4 : Exit Try 'Modrinth 整合包
+                If SduPackageFiles.FindEntry(Archive, "manifest.json") IsNot Nothing Then
+                    Dim Json As JObject = SduPackageFiles.FindEntry(Archive, "manifest.json").Open().ReadString(Encoding.UTF8).DeserializeJson()
                     If Json("addons") Is Nothing Then
                         PackType = 0 : Exit Try 'CurseForge 整合包
                     Else
                         PackType = 3 : Exit Try 'MCBBS 整合包
                     End If
                 End If
-                If Archive.GetEntry("modpack.json") IsNot Nothing Then PackType = 1 : Exit Try 'HMCL 整合包
-                If Archive.GetEntry("modpack.zip") IsNot Nothing OrElse Archive.GetEntry("modpack.mrpack") IsNot Nothing Then PackType = 9 : Exit Try '带启动器的压缩包
+                If SduPackageFiles.FindEntry(Archive, "modpack.json") IsNot Nothing Then PackType = 1 : Exit Try 'HMCL 整合包
+                If SduPackageFiles.FindEntry(Archive, "modpack.zip") IsNot Nothing OrElse SduPackageFiles.FindEntry(Archive, "modpack.mrpack") IsNot Nothing Then PackType = 9 : Exit Try '带启动器的压缩包
                 '从一级目录判断整合包类型
                 For Each Entry In Archive.Entries
-                    Dim PathSplits As String() = Entry.FullName.Split("/")
+                    Dim PathSplits As String() = Entry.FullName.Replace("\"c, "/"c).Split("/"c)
                     ArchiveBaseFolder = PathSplits(0) & "/"
                     '确定为一级目录下
                     If PathSplits.Count <> 2 Then Continue For
                     '判断是否为关键文件
-                    If PathSplits(1) = "mcbbs.packmeta" Then PackType = 3 : Exit Try 'MCBBS 整合包（优先于 manifest.json 判断）
-                    If PathSplits(1) = "mmc-pack.json" Then PackType = 2 : Exit Try 'MMC 整合包（优先于 manifest.json 判断，#4194）
-                    If PathSplits(1) = "modrinth.index.json" Then PackType = 4 : Exit Try 'Modrinth 整合包
-                    If PathSplits(1) = "manifest.json" Then
+                    If PathSplits(1).Equals("mcbbs.packmeta", StringComparison.OrdinalIgnoreCase) Then PackType = 3 : Exit Try 'MCBBS 整合包（优先于 manifest.json 判断）
+                    If PathSplits(1).Equals("mmc-pack.json", StringComparison.OrdinalIgnoreCase) Then PackType = 2 : Exit Try 'MMC 整合包（优先于 manifest.json 判断，#4194）
+                    If PathSplits(1).Equals("modrinth.index.json", StringComparison.OrdinalIgnoreCase) Then PackType = 4 : Exit Try 'Modrinth 整合包
+                    If PathSplits(1).Equals("manifest.json", StringComparison.OrdinalIgnoreCase) Then
                         Dim Json As JObject = Entry.Open().ReadString(Encoding.UTF8).DeserializeJson()
                         If Json("addons") Is Nothing Then
                             PackType = 0 : Exit Try 'CurseForge 整合包
@@ -72,8 +74,8 @@ Public Module ModModpack
                             PackType = 3 : ArchiveBaseFolder = "overrides/" : Exit Try 'MCBBS 整合包
                         End If
                     End If
-                    If PathSplits(1) = "modpack.json" Then PackType = 1 : Exit Try 'HMCL 整合包
-                    If PathSplits(1) = "modpack.zip" OrElse PathSplits(1) = "modpack.mrpack" Then PackType = 9 : Exit Try '带启动器的压缩包
+                    If PathSplits(1).Equals("modpack.json", StringComparison.OrdinalIgnoreCase) Then PackType = 1 : Exit Try 'HMCL 整合包
+                    If PathSplits(1).Equals("modpack.zip", StringComparison.OrdinalIgnoreCase) OrElse PathSplits(1).Equals("modpack.mrpack", StringComparison.OrdinalIgnoreCase) Then PackType = 9 : Exit Try '带启动器的压缩包
                 Next
             Catch ex As Exception
                 If ex.GetDisplay(True).Contains("Error.WinIOError") Then
@@ -89,19 +91,19 @@ Public Module ModModpack
             Select Case PackType
                 Case 0
                     Logger.Info("整合包种类：CurseForge")
-                    Return InstallPackCurseForge(File, Archive, ArchiveBaseFolder, InstanceName, Logo)
+                    Return InstallPackCurseForge(File, Archive, ArchiveBaseFolder, InstanceName, Logo, ShowNotifications)
                 Case 1
                     Logger.Info("整合包种类：HMCL")
-                    Return InstallPackHMCL(File, Archive, ArchiveBaseFolder)
+                    Return InstallPackHMCL(File, Archive, ArchiveBaseFolder, ShowNotifications)
                 Case 2
                     Logger.Info("整合包种类：MMC")
-                    Return InstallPackMMC(File, Archive, ArchiveBaseFolder)
+                    Return InstallPackMMC(File, Archive, ArchiveBaseFolder, ShowNotifications)
                 Case 3
                     Logger.Info("整合包种类：MCBBS")
-                    Return InstallPackMCBBS(File, Archive, ArchiveBaseFolder, InstanceName)
+                    Return InstallPackMCBBS(File, Archive, ArchiveBaseFolder, InstanceName, ShowNotifications)
                 Case 4
                     Logger.Info("整合包种类：Modrinth")
-                    Return InstallPackModrinth(File, Archive, ArchiveBaseFolder, InstanceName, Logo)
+                    Return InstallPackModrinth(File, Archive, ArchiveBaseFolder, InstanceName, Logo, ShowNotifications)
                 Case 9
                     Logger.Info("整合包种类：带启动器的压缩包")
                     Return InstallPackLauncherPack(File, Archive, ArchiveBaseFolder)
@@ -160,12 +162,13 @@ Public Module ModModpack
 
     'CurseForge
     Private Function InstallPackCurseForge(FileAddress As String, Archive As ZipArchive, ArchiveBaseFolder As String,
-                                           Optional InstanceName As String = Nothing, Optional Logo As String = Nothing) As LoaderCombo(Of String)
+                                           Optional InstanceName As String = Nothing, Optional Logo As String = Nothing,
+                                           Optional ShowNotifications As Boolean = True) As LoaderCombo(Of String)
 
         '读取 Json 文件
         Dim Json As JObject
         Try
-            Json = Archive.GetEntry(ArchiveBaseFolder & "manifest.json").Open().ReadString().DeserializeJson()
+            Json = SduPackageFiles.FindEntry(Archive, ArchiveBaseFolder & "manifest.json").Open().ReadString().DeserializeJson()
         Catch ex As Exception
             Throw New Exception("CurseForge 整合包安装信息存在问题", ex)
         End Try
@@ -355,7 +358,7 @@ Public Module ModModpack
         End If
 
         '启动
-        Dim Loader As New LoaderCombo(Of String)(LoaderName, Loaders) With {.OnStateChanged = AddressOf McInstallState}
+        Dim Loader As New LoaderCombo(Of String)(LoaderName, Loaders) With {.OnStateChanged = Sub(StateLoader) McInstallState(StateLoader, ShowNotifications)}
         Loader.Start(VersionFolder)
         LoaderTaskbarAdd(Loader)
         FrmMain.BtnExtraDownload.ShowRefresh()
@@ -363,12 +366,13 @@ Public Module ModModpack
     End Function
 
     'Modrinth
-    Private Function InstallPackModrinth(FileAddress As String, Archive As ZipArchive, ArchiveBaseFolder As String, Optional InstanceName As String = Nothing, Optional Logo As String = Nothing) As LoaderCombo(Of String)
+    Private Function InstallPackModrinth(FileAddress As String, Archive As ZipArchive, ArchiveBaseFolder As String, Optional InstanceName As String = Nothing, Optional Logo As String = Nothing,
+                                         Optional ShowNotifications As Boolean = True) As LoaderCombo(Of String)
 
         '读取 Json 文件
         Dim Json As JObject
         Try
-            Json = Archive.GetEntry(ArchiveBaseFolder & "modrinth.index.json").Open().ReadString().DeserializeJson()
+            Json = SduPackageFiles.FindEntry(Archive, ArchiveBaseFolder & "modrinth.index.json").Open().ReadString().DeserializeJson()
         Catch ex As Exception
             Throw New Exception("Modrinth 整合包安装信息存在问题", ex)
         End Try
@@ -483,7 +487,7 @@ Public Module ModModpack
         End If
 
         '启动
-        Dim Loader As New LoaderCombo(Of String)(LoaderName, Loaders) With {.OnStateChanged = AddressOf McInstallState}
+        Dim Loader As New LoaderCombo(Of String)(LoaderName, Loaders) With {.OnStateChanged = Sub(StateLoader) McInstallState(StateLoader, ShowNotifications)}
         Loader.Start(VersionFolder)
         LoaderTaskbarAdd(Loader)
         FrmMain.BtnExtraDownload.ShowRefresh()
@@ -491,11 +495,11 @@ Public Module ModModpack
     End Function
 
     'HMCL
-    Private Function InstallPackHMCL(FileAddress As String, Archive As ZipArchive, ArchiveBaseFolder As String) As LoaderCombo(Of String)
+    Private Function InstallPackHMCL(FileAddress As String, Archive As ZipArchive, ArchiveBaseFolder As String, Optional ShowNotifications As Boolean = True) As LoaderCombo(Of String)
         '读取 Json 文件
         Dim Json As JObject
         Try
-            Json = Archive.GetEntry(ArchiveBaseFolder & "modpack.json").Open().ReadString(Encoding.UTF8).DeserializeJson()
+            Json = SduPackageFiles.FindEntry(Archive, ArchiveBaseFolder & "modpack.json").Open().ReadString(Encoding.UTF8).DeserializeJson()
         Catch ex As Exception
             Throw New Exception("HMCL 整合包安装信息存在问题", ex)
         End Try
@@ -532,7 +536,7 @@ Public Module ModModpack
             Throw New OperationCanceledException
         End If
         '启动
-        Dim Loader As New LoaderCombo(Of String)(LoaderName, Loaders) With {.OnStateChanged = AddressOf McInstallState}
+        Dim Loader As New LoaderCombo(Of String)(LoaderName, Loaders) With {.OnStateChanged = Sub(StateLoader) McInstallState(StateLoader, ShowNotifications)}
         Loader.Start(VersionFolder)
         LoaderTaskbarAdd(Loader)
         FrmMain.BtnExtraDownload.ShowRefresh()
@@ -540,12 +544,12 @@ Public Module ModModpack
     End Function
 
     'MMC
-    Private Function InstallPackMMC(FileAddress As String, Archive As ZipArchive, ArchiveBaseFolder As String) As LoaderCombo(Of String)
+    Private Function InstallPackMMC(FileAddress As String, Archive As ZipArchive, ArchiveBaseFolder As String, Optional ShowNotifications As Boolean = True) As LoaderCombo(Of String)
         '读取 Json 文件
         Dim PackJson As JObject, PackInstance As String
         Try
-            PackJson = Archive.GetEntry(ArchiveBaseFolder & "mmc-pack.json").Open().ReadString(Encoding.UTF8).DeserializeJson()
-            PackInstance = Archive.GetEntry(ArchiveBaseFolder & "instance.cfg").Open().ReadString(Encoding.UTF8)
+            PackJson = SduPackageFiles.FindEntry(Archive, ArchiveBaseFolder & "mmc-pack.json").Open().ReadString(Encoding.UTF8).DeserializeJson()
+            PackInstance = SduPackageFiles.FindEntry(Archive, ArchiveBaseFolder & "instance.cfg").Open().ReadString(Encoding.UTF8)
         Catch ex As Exception
             Throw New Exception("MMC 整合包安装信息存在问题", ex)
         End Try
@@ -666,7 +670,7 @@ Public Module ModModpack
         End If
 
         '启动
-        Dim Loader As New LoaderCombo(Of String)(LoaderName, Loaders) With {.OnStateChanged = AddressOf McInstallState}
+        Dim Loader As New LoaderCombo(Of String)(LoaderName, Loaders) With {.OnStateChanged = Sub(StateLoader) McInstallState(StateLoader, ShowNotifications)}
         Loader.Start(VersionFolder)
         LoaderTaskbarAdd(Loader)
         FrmMain.BtnExtraDownload.ShowRefresh()
@@ -675,11 +679,11 @@ Public Module ModModpack
 
     'MCBBS
     Private Function InstallPackMCBBS(FileAddress As String, Archive As ZipArchive, ArchiveBaseFolder As String,
-                                      Optional InstanceName As String = Nothing) As LoaderCombo(Of String)
+                                      Optional InstanceName As String = Nothing, Optional ShowNotifications As Boolean = True) As LoaderCombo(Of String)
         '读取 Json 文件
         Dim Json As JObject
         Try
-            Dim Entry = If(Archive.GetEntry(ArchiveBaseFolder & "mcbbs.packmeta"), Archive.GetEntry(ArchiveBaseFolder & "manifest.json"))
+            Dim Entry = If(SduPackageFiles.FindEntry(Archive, ArchiveBaseFolder & "mcbbs.packmeta"), SduPackageFiles.FindEntry(Archive, ArchiveBaseFolder & "manifest.json"))
             Json = Entry.Open().ReadString(Encoding.UTF8).DeserializeJson()
         Catch ex As Exception
             Throw New Exception("MCBBS 整合包安装信息存在问题", ex)
@@ -752,7 +756,7 @@ Public Module ModModpack
         End If
 
         '启动
-        Dim Loader As New LoaderCombo(Of String)(LoaderName, Loaders) With {.OnStateChanged = AddressOf McInstallState}
+        Dim Loader As New LoaderCombo(Of String)(LoaderName, Loaders) With {.OnStateChanged = Sub(StateLoader) McInstallState(StateLoader, ShowNotifications)}
         'If Archive IsNot Nothing Then Archive.Dispose() '解除占用，以免在加载器中触发 “正由另一进程使用，因此该进程无法访问此文件”
         Loader.Start(VersionFolder)
         LoaderTaskbarAdd(Loader)

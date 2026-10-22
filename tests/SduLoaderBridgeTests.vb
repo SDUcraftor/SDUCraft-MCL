@@ -7,12 +7,14 @@ Module SduLoaderBridgeTests
         Try
             WaitingAndProgress()
             FailurePropagation()
+            ManualInstallIsNotSuccess()
             ParentCancellation()
             ChildCancellation()
             AlreadyFinishedDoesNotRestart()
             AlreadyFailedDoesNotRestart()
             InterruptedWaitCancelsChild()
             RejectUnstartedChild()
+            InstallStateNotifications()
             Console.WriteLine("PASS: " & Passed & " loader lifecycle scenarios (actual LoaderBase/LoaderTask/LoaderCombo).")
         Catch ErrorValue As Exception
             Console.Error.WriteLine(ErrorValue.ToString())
@@ -84,6 +86,23 @@ Module SduLoaderBridgeTests
         End While
         Check(Current Is Failure, "Original failure was not preserved")
         Pass("child error reaches outer with original exception")
+    End Sub
+
+    Private Sub ManualInstallIsNotSuccess()
+        Dim Failure As New SduManualInstallRequiredException("manual-install-required")
+        Dim Fixture As New InstallFixture(Failure)
+        Fixture.StartOuter()
+        Fixture.Release.Set()
+        UntilTrue(Function() Fixture.Outer.State = LoadState.Failed, "Manual fallback was marked as installed or canceled")
+        Try
+            SduLoaderBridge.WaitForCompletion(Fixture.Outer)
+            Throw New Exception("Manual fallback returned normally")
+        Catch ErrorValue As Exception
+            Check(ErrorValue.GetBaseException() Is Failure, "Manual fallback lost its explicit reason")
+            Dim Reported As New SduInstallReportedException(ErrorValue)
+            Check(Reported.InnerException Is ErrorValue AndAlso Reported.GetBaseException() Is Failure, "Reported result lost original error")
+        End Try
+        Pass("manual fallback fails outer task with an explicit reason")
     End Sub
 
     Private Sub ParentCancellation()
@@ -164,6 +183,23 @@ Module SduLoaderBridgeTests
         End Try
         Check(Observed, "Unstarted child was silently started or waited forever")
         Pass("unstarted child rejected")
+    End Sub
+
+    Private Sub InstallStateNotifications()
+        For Each State In {LoadState.Loading, LoadState.Finished, LoadState.Failed, LoadState.Canceled}
+            Dim Loader As New LoaderCombo(Of String)("installation", New List(Of LoaderBase)())
+            Loader.Error = New Exception("failure")
+            Loader.State = State
+            ResetNotifications()
+            McInstallState(Loader, ShowNotifications:=False)
+            Check(HintCount = 0 AndAlso AlertCount = 0, "SDU child emitted a duplicate notification")
+            Check(CleanupCount = If(State = LoadState.Loading, 0, 1) AndAlso RefreshCount = CleanupCount, "Silencing notifications skipped cleanup or instance refresh")
+            ResetNotifications()
+            McInstallState(Loader)
+            Check(AlertCount = If(State = LoadState.Failed, 1, 0), "Default failure alert changed")
+            Check(HintCount = If(State = LoadState.Finished OrElse State = LoadState.Canceled, 1, 0), "Default completion/cancel hint changed")
+            Pass("silent child and normal installation notifications: " & State.ToString())
+        Next
     End Sub
 
     Private Sub UntilTrue(Condition As Func(Of Boolean), Message As String)

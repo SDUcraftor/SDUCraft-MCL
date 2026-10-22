@@ -34,11 +34,52 @@ Module SduBareClientTests
             Run("publication failure restores backup", AddressOf RestoreAfterSwitchFailure)
             Run("restore failure preserves backup and reports its path", AddressOf PreserveBackupAfterRestoreFailure)
             Run("invalid source version names are rejected before writes", AddressOf InvalidSourceVersion)
+            Run("archive markers retain actual paths and ignore separator/case differences", AddressOf ArchiveMarkers)
+            Run("manual exports preserve extensions and never reuse stale packages", AddressOf ManualExports)
             Console.WriteLine("PASS: " & Passed & " bare-client filesystem scenarios (production installer, real temporary ZIP/files).")
         Catch ErrorValue As Exception
             Console.Error.WriteLine(ErrorValue.ToString())
             Environment.ExitCode = 1
         End Try
+    End Sub
+
+    Private Sub ArchiveMarkers()
+        For Each Name In {"modpack.zip", "MODPACK.MRPACK", "wrapper/modpack.zip", "WRAPPER\MODPACK.MRPACK"}
+            Using Data As New MemoryStream()
+                Using Writer As New ZipArchive(Data, ZipArchiveMode.Create, True)
+                    AddEntry(Writer, Name, "inner-package-bytes")
+                    AddEntry(Writer, "deep/nested/modpack.zip", "must-not-match")
+                End Using
+                Data.Position = 0
+                Using Archive As New ZipArchive(Data, ZipArchiveMode.Read)
+                    Dim Entry = SduPackageFiles.FindMarker(Archive, "modpack.mrpack", "modpack.zip")
+                    Check(Entry IsNot Nothing AndAlso Entry.FullName = Name, "Marker lost original ZIP entry: " & Name)
+                    Using Reader As New StreamReader(Entry.Open())
+                        Check(Reader.ReadToEnd() = "inner-package-bytes", "Could not extract matched inner entry")
+                    End Using
+                    Check(SduPackageFiles.FindEntry(Archive, Name.Replace("\"c, "/"c).ToLowerInvariant()) Is Entry, "Known-pack entry lookup disagrees with marker lookup")
+                End Using
+            End Using
+        Next
+        Using F As New Fixture({Pair("deep/nested/modpack.zip", "wrong")})
+            Check(SduPackageFiles.FindMarker(F.Archive, "modpack.zip") Is Nothing, "Marker accepted arbitrary nesting")
+        End Using
+    End Sub
+
+    Private Sub ManualExports()
+        Using F As New Fixture()
+            For Each Extension In {".zip", ".mrpack"}
+                Dim Source = Path.Combine(F.Root, "download" & Extension)
+                Dim Folder = Path.Combine(F.Root, "exports")
+                File.WriteAllText(Source, "old-package")
+                Dim First = SduPackageFiles.ExportForManualInstall(Source, Folder, "Test Pack")
+                File.WriteAllText(Source, "new-package")
+                Dim Second = SduPackageFiles.ExportForManualInstall(Source, Folder, "Test Pack")
+                Check(First <> Second, "Export reused a stale filename")
+                Check(Path.GetExtension(First) = Extension AndAlso Path.GetExtension(Second) = Extension, "Export extension lost its dot")
+                Check(File.ReadAllText(First) = "old-package" AndAlso File.ReadAllText(Second) = "new-package", "Export overwrote old bytes or retained stale content")
+            Next
+        End Using
     End Sub
 
     Private Class Fixture

@@ -47,20 +47,8 @@ Public Module SduModpackInstaller
         End Sub) With {.ProgressWeight = 10})
 
         ' 启动加载器，显示进度到任务栏
-        Dim Loader As New LoaderCombo(Of String)(LoaderName, Loaders) With {
-            .OnStateChanged = Sub(MyLoader)
-                Select Case MyLoader.State
-                    Case LoadState.Failed
-                        Hint(MyLoader.Name & "失败：" & MyLoader.Error.GetDisplay(False), HintType.Red)
-                        ' 安装失败时跳转到下载包所在目录，建议用户手动安装
-                        RunInNewThread(Sub() OpenManualInstallFolder(LocalFile, InstanceName,
-                            $"{InstanceName} 自动安装失败，已转入手动安装流程。"), "SDUcraft 安装失败转手动")
-                    Case LoadState.Canceled
-                        Hint(MyLoader.Name & "已取消！", HintType.Blue)
-                End Select
-                '目标目录由实际子安装器管理；外层不依据 Input 再次删除目录，避免取消/失败时重复清理。
-            End Sub
-        }
+        '目标目录由实际子安装器管理；外层统一等待、通知，不重复清理目录。
+        Dim Loader As New LoaderCombo(Of String)(LoaderName, Loaders)
         ' 安装到默认 .minecraft/versions/<实例名> 目录，由 PCL 自动版本隔离
         Loader.Start(McFolder & "versions\" & InstanceName & "\")
 
@@ -72,28 +60,43 @@ Public Module SduModpackInstaller
         RunInUi(Sub() FrmMain.PageChange(FormMain.PageType.TaskManager))
 
         '不能在任务刚加入列表后返回，否则两个入口会过早释放“安装中”状态。
-        SduLoaderBridge.WaitForCompletion(Loader)
+        Try
+            SduLoaderBridge.WaitForCompletion(Loader)
+            Hint(LoaderName & "成功！", HintType.Green)
+        Catch ex As Exception
+            If ex.IsCanceled Then
+                Hint(LoaderName & "已取消！", HintType.Blue)
+                Throw
+            End If
+            Logger.Warn(ex, "SDUcraft 自动安装未完成")
+            Dim ManualRequired = TypeOf ex.GetBaseException() Is SduManualInstallRequiredException
+            Dim Message = If(ManualRequired, ex.GetBaseException().Message,
+                $"{InstanceName} 自动安装失败：{ex.GetDisplay(False)}")
+            Try
+                OpenManualInstallFolder(LocalFile, InstanceName, Message, IsFailure:=Not ManualRequired)
+            Catch ExportError As Exception
+                Logger.Warn(ExportError, "导出手动安装包失败")
+                Hint(Message & vbCrLf & "导出失败，原始下载文件：" & LocalFile, HintType.Red)
+            End Try
+            Throw New SduInstallReportedException(ex)
+        End Try
     End Sub
 
     ''' <summary>
     ''' 把已下载的整合包复制到 PCL 目录下 SduDownload 文件夹并打开资源管理器，提示用户手动安装。
     ''' 下载文件不存在时只提示，不打开文件夹。
     ''' </summary>
-    Public Sub OpenManualInstallFolder(DownloadedFile As String, InstanceName As String, Message As String)
+    Public Sub OpenManualInstallFolder(DownloadedFile As String, InstanceName As String, Message As String, Optional IsFailure As Boolean = False)
         If Not FileUtils.Exists(DownloadedFile) Then
             Hint(Message, HintType.Red)
             Return
         End If
 
         Dim Folder As String = Paths.Base & "SduDownload\"
-        DirectoryUtils.Create(Folder)
-        Dim SafeName As String = System.Text.RegularExpressions.Regex.Replace(InstanceName, "[\\/:*?""<>|!;\r\n\t]", "_").Trim("_"c, " "c)
-        If SafeName = "" Then SafeName = "SDUcraft-Pack"
-        Dim Target As String = Folder & SafeName & PathUtils.GetExtension(DownloadedFile)
-        If Not FileUtils.Exists(Target) Then FileUtils.Copy(DownloadedFile, Target)
+        Dim Target = SduPackageFiles.ExportForManualInstall(DownloadedFile, Folder, InstanceName)
         Logger.Info($"已复制整合包到手动安装目录：{Target}")
         OpenExplorer(Folder)
-        Hint(Message & vbCrLf & "已打开下载文件夹，请手动将整合包拖入启动器安装。", HintType.Blue)
+        Hint(Message & vbCrLf & "已打开下载文件夹，请手动拖入此文件安装：" & System.IO.Path.GetFileName(Target), If(IsFailure, HintType.Red, HintType.Blue))
     End Sub
 
     ''' <summary>

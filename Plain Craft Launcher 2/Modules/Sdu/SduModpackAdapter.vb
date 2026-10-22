@@ -24,16 +24,10 @@ Public Module SduModpackAdapter
         Try
             Archive = FileUtils.OpenZip(DownloadedFile)
 
-            '收集条目（目录分隔符统一为 /）
-            Dim Entries As New List(Of String)
-            For Each Entry As ZipArchiveEntry In Archive.Entries
-                Entries.Add(Entry.FullName.Replace("\"c, "/"c))
-            Next
-
             '------------------------------------------------------------------
             ' 0. mrpack/Modrinth 格式（根或一级目录）
             '------------------------------------------------------------------
-            If HasMarker(Entries, "modrinth.index.json") Then
+            If SduPackageFiles.FindMarker(Archive, "modrinth.index.json") IsNot Nothing Then
                 Logger.Info("检测到 Modrinth/mrpack 整合包，直接安装")
                 Archive.Dispose()
                 Archive = Nothing
@@ -44,19 +38,19 @@ Public Module SduModpackAdapter
             '------------------------------------------------------------------
             ' 1. 纯资源包
             '------------------------------------------------------------------
-            If ContainsRoot(Entries, "pack.mcmeta") AndAlso ContainsRoot(Entries, "pack.png") Then
+            If SduPackageFiles.FindEntry(Archive, "pack.mcmeta") IsNot Nothing AndAlso SduPackageFiles.FindEntry(Archive, "pack.png") IsNot Nothing Then
                 Throw New Exception("该文件是一个 Minecraft 资源包，不是整合包，无法安装。请选择其他文件。")
             End If
 
             '------------------------------------------------------------------
             ' 2. 带启动器的压缩包（内含 modpack.mrpack 或 modpack.zip）
             '------------------------------------------------------------------
-            Dim InnerEntryName As String = FindMarker(Entries, "modpack.mrpack", "modpack.zip")
-            If InnerEntryName <> "" Then
-                Logger.Info($"检测到带启动器的整合包，提取内层 {InnerEntryName}")
+            Dim InnerEntry = SduPackageFiles.FindMarker(Archive, "modpack.mrpack", "modpack.zip")
+            If InnerEntry IsNot Nothing Then
+                Logger.Info($"检测到带启动器的整合包，提取内层 {InnerEntry.FullName}")
                 Dim TempFolder As String = RequestTaskTempFolder()
                 Dim MrpackPath As String = TempFolder & "modpack.mrpack"
-                Using EntryStream As Stream = Archive.GetEntry(InnerEntryName).Open()
+                Using EntryStream As Stream = InnerEntry.Open()
                     FileUtils.Write(MrpackPath, EntryStream)
                 End Using
                 Archive.Dispose()
@@ -69,7 +63,7 @@ Public Module SduModpackAdapter
             '------------------------------------------------------------------
             ' 3. 其他已知整合包格式，交给 ModpackInstall 自动识别
             '------------------------------------------------------------------
-            If HasMarker(Entries, "mcbbs.packmeta", "manifest.json", "mmc-pack.json", "modpack.json") Then
+            If SduPackageFiles.FindMarker(Archive, "mcbbs.packmeta", "manifest.json", "mmc-pack.json", "modpack.json") IsNot Nothing Then
                 Logger.Info("检测到 CurseForge/MCBBS/HMCL/MMC 类整合包，交由 ModpackInstall 识别安装")
                 Archive.Dispose()
                 Archive = Nothing
@@ -112,7 +106,7 @@ Public Module SduModpackAdapter
             Logger.Warn("整合包结构未识别，打开下载文件所在文件夹供用户手动安装")
             Archive.Dispose()
             Archive = Nothing
-            OpenManualInstallFolder(DownloadedFile, Item)
+            Throw New SduManualInstallRequiredException($"未能自动识别 {Item.Name} 的包结构，需要手动安装。")
         Catch ex As Exception
             If ex.IsCanceled Then
                 Throw
@@ -136,48 +130,7 @@ Public Module SduModpackAdapter
             Throw New IOException("此格式暂不支持仅更新 mods，已停止安装以保留现有实例。请手动更新 mods，或先重命名旧实例后全新安装：" & InstanceName)
         End If
         If Not PathUtils.IsSame(McFolder, McFolderSelected) Then Throw New IOException("安装期间切换了 Minecraft 文件夹，请重新发起安装。")
-        SduLoaderBridge.WaitForCompletion(ModpackInstall(FilePath, InstanceName), Task)
+        SduLoaderBridge.WaitForCompletion(ModpackInstall(FilePath, InstanceName, ShowNotifications:=False), Task)
     End Sub
-
-#Region "结构检测"
-
-    ''' <summary>在条目集合中查找关键文件（允许位于根或一级包裹目录），返回命中条目名。</summary>
-    Private Function FindMarker(Entries As List(Of String), ParamArray Markers As String()) As String
-        For Each Marker In Markers
-            If Entries.Contains(Marker) Then Return Marker
-            For Each Entry In Entries
-                Dim Parts As String() = Entry.Split("/"c)
-                If Parts.Length = 2 AndAlso Parts(1).Equals(Marker, StringComparison.OrdinalIgnoreCase) Then
-                    Return Entry
-                End If
-            Next
-        Next
-        Return ""
-    End Function
-
-    ''' <summary>是否存在任一关键文件（根或一级目录）。</summary>
-    Private Function HasMarker(Entries As List(Of String), ParamArray Markers As String()) As Boolean
-        Return FindMarker(Entries, Markers) <> ""
-    End Function
-
-    ''' <summary>文件是否直接位于压缩包根目录。</summary>
-    Private Function ContainsRoot(Entries As List(Of String), FileName As String) As Boolean
-        Return Entries.Any(Function(Entry) Entry.Equals(FileName, StringComparison.OrdinalIgnoreCase))
-    End Function
-
-#End Region
-
-#Region "未知结构手动安装"
-
-    ''' <summary>
-    ''' 未识别结构：把下载包复制到 PCL 目录下 SduDownload 文件夹，打开资源管理器提示用户手动安装。
-    ''' </summary>
-    Private Sub OpenManualInstallFolder(DownloadedFile As String, Item As SduGameDownload)
-        SduModpackInstaller.OpenManualInstallFolder(DownloadedFile,
-            SduModpackInstaller.CreateSduInstanceName(Item),
-            $"未能自动识别 {Item.Name} 的包结构。")
-    End Sub
-
-#End Region
 
 End Module

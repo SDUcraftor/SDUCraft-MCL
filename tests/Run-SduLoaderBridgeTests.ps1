@@ -19,6 +19,11 @@ if (-not $state) { throw 'LoadState source not found' }
 $runtimeSource = 'Public Module ModLoader' + "`r`n" + $state + "`r`n" + ($classes -join "`r`n") + "`r`nEnd Module"
 $runtimeFile = Join-Path $output 'ActualLoaders.vb'
 [IO.File]::WriteAllText($runtimeFile,$runtimeSource,[Text.UTF8Encoding]::new($false))
+$installSource = Get-Content (Join-Path $repository 'Plain Craft Launcher 2\Pages\PageDownload\ModDownloadLib.vb') -Raw -Encoding UTF8
+$installState = [regex]::Matches($installSource, '(?ms)^    Public Sub McInstallState\(.*?^    End Sub')
+if ($installState.Count -ne 2) { throw 'Expected both production install-state overloads' }
+$installStateFile = Join-Path $output 'ActualInstallState.vb'
+[IO.File]::WriteAllText($installStateFile, ('Public Module ActualInstallState' + "`r`n" + (($installState | ForEach-Object { $_.Value }) -join "`r`n") + "`r`nEnd Module"), [Text.UTF8Encoding]::new($false))
 
 Push-Location $repository
 try {
@@ -36,8 +41,11 @@ try {
         '/imports:System,System.Collections.Generic,System.Linq,System.Threading,Microsoft.VisualBasic',
         "/r:$framework\mscorlib.dll", "/r:$framework\System.dll", "/r:$framework\System.Core.dll",
         $runtimeFile,
+        $installStateFile,
         (Join-Path $repository 'Plain Craft Launcher 2\Modules\Sdu\SduLoaderBridge.vb'),
+        (Join-Path $repository 'Plain Craft Launcher 2\Modules\Sdu\SduInstallOutcome.vb'),
         (Join-Path $PSScriptRoot 'SduLoaderBridgeHost.vb'),
+        (Join-Path $PSScriptRoot 'SduInstallStateHost.vb'),
         (Join-Path $PSScriptRoot 'SduLoaderBridgeTests.vb')
     )
     & $DotNetPath @arguments

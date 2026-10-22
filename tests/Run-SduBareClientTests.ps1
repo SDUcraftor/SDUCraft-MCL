@@ -22,6 +22,7 @@ try {
         "/r:$framework\mscorlib.dll", "/r:$framework\System.dll", "/r:$framework\System.Core.dll",
         "/r:$framework\System.IO.Compression.dll", "/r:$framework\System.Runtime.Serialization.dll", "/r:$json",
         (Join-Path $repository 'Plain Craft Launcher 2\Modules\Sdu\SduBareClientInstaller.vb'),
+        (Join-Path $repository 'Plain Craft Launcher 2\Modules\Sdu\SduPackageFiles.vb'),
         (Join-Path $PSScriptRoot 'SduBareClientTests.vb')
     )
     & $DotNetPath @arguments

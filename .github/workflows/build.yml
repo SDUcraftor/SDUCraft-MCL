@@ -80,6 +80,9 @@ jobs:
     - name: Test SDUcraft bare-client installation
       run: .\tests\Run-SduBareClientTests.ps1
 
+    - name: Test nested mouse wheel routing
+      run: .\tests\Run-SduScrollTests.ps1
+
     - name: Build
       run: msbuild "Plain Craft Launcher 2\Plain Craft Launcher 2.vbproj" -p:Configuration=${{ matrix.configuration }}
 

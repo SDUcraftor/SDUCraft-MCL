@@ -1224,7 +1224,7 @@ Public Class FormMain
         HelpDetail = 9
     End Enum
     ''' <summary>
-    ''' 次要页面种类。其数值必须与 StackPanel 中的下标一致。
+    ''' 次要页面种类。下载页按 Tag 映射，其余页面仍须与 StackPanel 中的下标一致。
     ''' 该枚举在自定义事件中使用，是公开 API 的一部分。
     ''' </summary>
     Public Enum PageSubType
@@ -1371,10 +1371,9 @@ Public Class FormMain
             Select Case Stack.Page
                 Case PageType.Download
                     If FrmDownloadLeft Is Nothing Then FrmDownloadLeft = New PageDownloadLeft
-                    'SDUcraft 的枚举值用于稳定保存页面状态，不对应左侧 StackPanel 的子项下标。
-                    Dim DownloadItem = If(SubType = PageSubType.DownloadSdu,
-                                          CType(FrmDownloadLeft.ItemSdu, MyListItem),
-                                          CType(FrmDownloadLeft.PanItem.Children(SubType), MyListItem))
+                    '页面枚举对应 Tag，不能依赖插入新项目后会变化的控件下标。
+                    Dim DownloadItem = FrmDownloadLeft.PanItem.Children.OfType(Of MyListItem)().
+                        Single(Function(Item) CInt(Item.Tag) = CInt(SubType))
                     DownloadItem.SetChecked(True, True, Stack = PageCurrent)
                 Case PageType.Setup
                     If FrmSetupLeft Is Nothing Then FrmSetupLeft = New PageSetupLeft
