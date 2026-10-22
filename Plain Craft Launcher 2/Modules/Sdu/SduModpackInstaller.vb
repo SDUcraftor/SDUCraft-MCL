@@ -6,7 +6,8 @@
 Public Module SduModpackInstaller
 
     ''' <summary>
-    ''' 启动整合包下载并安装。下载与安装进度显示在任务栏加载器中。
+    ''' 启动整合包下载并安装，并等待整个流程结束。必须在工作线程中调用。
+    ''' 下载与安装进度显示在任务栏加载器中，失败和取消会抛回调用方。
     ''' </summary>
     Public Sub StartInstall(Item As SduGameDownload)
         Dim DownloadFile As SduGameDownloadFile = Item.PreferredFile
@@ -42,7 +43,7 @@ Public Module SduModpackInstaller
         Loaders.Add(New LoaderTask(Of Integer, Integer)("安装整合包",
         Sub(Task)
             SduModpackAdapter.AdaptAndInstall(LocalFile, Item, Task)
-        End Sub) With {.ProgressWeight = 0.1})
+        End Sub) With {.ProgressWeight = 10})
 
         ' 启动加载器，显示进度到任务栏
         Dim Loader As New LoaderCombo(Of String)(LoaderName, Loaders) With {
@@ -56,7 +57,7 @@ Public Module SduModpackInstaller
                     Case LoadState.Canceled
                         Hint(MyLoader.Name & "已取消！", HintType.Blue)
                 End Select
-                McInstallFailedClearFolder(MyLoader)
+                '目标目录由实际子安装器管理；外层不依据 Input 再次删除目录，避免取消/失败时重复清理。
             End Sub
         }
         ' 安装到默认 .minecraft/versions/<实例名> 目录，由 PCL 自动版本隔离
@@ -68,6 +69,9 @@ Public Module SduModpackInstaller
             FrmMain.BtnExtraDownload.ShowRefresh()
         End Sub)
         RunInUi(Sub() FrmMain.PageChange(FormMain.PageType.TaskManager))
+
+        '不能在任务刚加入列表后返回，否则两个入口会过早释放“安装中”状态。
+        SduLoaderBridge.WaitForCompletion(Loader)
     End Sub
 
     ''' <summary>

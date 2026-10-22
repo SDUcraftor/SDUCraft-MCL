@@ -39,7 +39,7 @@ Public Module SduModpackAdapter
                 Logger.Info("检测到 Modrinth/mrpack 整合包，直接安装")
                 Archive.Dispose()
                 Archive = Nothing
-                ModpackInstall(DownloadedFile, InstanceName)
+                SduLoaderBridge.WaitForCompletion(ModpackInstall(DownloadedFile, InstanceName), Task)
                 Return
             End If
 
@@ -64,7 +64,7 @@ Public Module SduModpackAdapter
                 Archive.Dispose()
                 Archive = Nothing
                 Logger.Info($"内层 modpack.mrpack 已提取至：{MrpackPath}")
-                ModpackInstall(MrpackPath, InstanceName)
+                SduLoaderBridge.WaitForCompletion(ModpackInstall(MrpackPath, InstanceName), Task)
                 Return
             End If
 
@@ -75,7 +75,7 @@ Public Module SduModpackAdapter
                 Logger.Info("检测到 CurseForge/MCBBS/HMCL/MMC 类整合包，交由 ModpackInstall 识别安装")
                 Archive.Dispose()
                 Archive = Nothing
-                ModpackInstall(DownloadedFile, InstanceName)
+                SduLoaderBridge.WaitForCompletion(ModpackInstall(DownloadedFile, InstanceName), Task)
                 Return
             End If
 

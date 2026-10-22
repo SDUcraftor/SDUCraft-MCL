@@ -54,17 +54,19 @@ Pages\PageDownload\PageDownloadSdu.vb   内置整合包下载页
 
 - Windows 10 / 11
 - .NET Framework 4.8 开发包
-- .NET SDK（用于构建 `MeloongCore` 与 `PCLCS`，版本见 `MeloongCore/global.json`）
+- .NET 8 SDK（用于构建 `MeloongCore` 与 `PCLCS`；根目录 `global.json` 允许使用已安装的最新 8.0 SDK）
 - Visual Studio 2022，或 Build Tools 中的 MSBuild
 
 ```powershell
-dotnet restore PCLCS\PCLCS.csproj
+dotnet restore PCLCS\PCLCS.csproj -p:Configuration=Release
 msbuild "Plain Craft Launcher 2\Plain Craft Launcher 2.vbproj" -p:Configuration=Release
 ```
 
 说明：
 
 - `MeloongCore` 是 `PCLCS.csproj` 的 `ProjectReference`，构建时必须同时存在（本仓库已作为普通目录包含）。
+- VB 主工程通过 `ProjectReference` 构建 `PCLCS` 与 `MeloongCore`，再将生成的 DLL 嵌入资源；干净检出不需要预先准备 `PCLCS/bin`。
+- 安装任务生命周期回归可运行 `./tests/Run-SduLoaderBridgeTests.ps1`，不下载整合包或修改游戏目录。
 - `NuGet.local.config` 是本机构建配置（含本机 NuGet 源路径），已加入 `.gitignore`。在其他机器构建时请按实际环境替换为自己的 NuGet 源。
 - 官方 CI 会通过 Secrets 注入 `PCL_MS_CLIENT_ID`、`PCL_CURSEFORGE_API_KEY`；未配置时对应值为空，不影响编译。
 

@@ -392,7 +392,7 @@ Partial Public Class PageLaunchRight
                 ex.ThrowIfCanceled()
                 Logger.Error(ex, "SDUcraft 整合包一键安装失败", LogBehavior.Alert)
             Finally
-                _SduDownloadInstalling = False
+                RunInUi(Sub() _SduDownloadInstalling = False)
             End Try
         End Sub)
     End Sub

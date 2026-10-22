@@ -3,10 +3,20 @@ on:
   push:
     paths:
       - 'Plain Craft Launcher 2/**'
+      - 'PCLCS/**'
+      - 'MeloongCore/**'
+      - 'tests/**'
+      - 'global.json'
+      - '*.sln'
       - '.github/workflows/**'
   pull_request:
     paths:
       - 'Plain Craft Launcher 2/**'
+      - 'PCLCS/**'
+      - 'MeloongCore/**'
+      - 'tests/**'
+      - 'global.json'
+      - '*.sln'
       - '.github/workflows/**'
   workflow_dispatch:
 
@@ -25,6 +35,11 @@ jobs:
       with:
         fetch-depth: 1
         submodules: true
+
+    - name: Setup .NET SDK
+      uses: actions/setup-dotnet@v5
+      with:
+        dotnet-version: '8.0.x'
 
     - name: Set Describe
       shell: bash
@@ -57,7 +72,10 @@ jobs:
         (gc "Plain Craft Launcher 2\Modules\Base\ModBase.vb") -replace 'Public Const CommitHash As String = ""', 'Public Const CommitHash As String = "${{ github.sha }}"' | Out-File "Plain Craft Launcher 2\Modules\Base\ModBase.vb"
         
     - name: Restore NuGet Packages
-      run: dotnet restore PCLCS\PCLCS.csproj
+      run: dotnet restore PCLCS\PCLCS.csproj -p:Configuration=${{ matrix.configuration }}
+
+    - name: Test SDUcraft loader lifecycle
+      run: .\tests\Run-SduLoaderBridgeTests.ps1
 
     - name: Build
       run: msbuild "Plain Craft Launcher 2\Plain Craft Launcher 2.vbproj" -p:Configuration=${{ matrix.configuration }}

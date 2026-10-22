@@ -206,7 +206,7 @@ Public Class PageDownloadSdu
                     ex.ThrowIfCanceled()
                     Logger.Error(ex, "SDUcraft 整合包一键安装失败", LogBehavior.Alert)
                 Finally
-                    SduDownloadInstalling = False
+                    RunInUi(Sub() SduDownloadInstalling = False)
                 End Try
             End Sub, "安装 SDUcraft 整合包")
     End Sub

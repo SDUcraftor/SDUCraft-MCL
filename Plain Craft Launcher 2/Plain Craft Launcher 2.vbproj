@@ -221,6 +221,7 @@
     <Compile Include="Modules\ThirdParty\DragHelper.vb" />
     <Compile Include="Modules\Sdu\SduDownloadItem.vb" />
     <Compile Include="Modules\Sdu\SduDownloadReadStore.vb" />
+    <Compile Include="Modules\Sdu\SduLoaderBridge.vb" />
     <Compile Include="Modules\Sdu\SduModpackAdapter.vb" />
     <Compile Include="Modules\Sdu\SduModpackInstaller.vb" />
     <Compile Include="Modules\Sdu\SduModpackService.vb" />
@@ -920,18 +921,19 @@
     <None Include="Resources\lwjgl-unsafe-agent.jar" />
   </ItemGroup>
   <ItemGroup>
-    <Reference Include="MeloongCore">
-      <HintPath>..\PCLCS\bin\MeloongCore.dll</HintPath>
-      <Private>False</Private>
-    </Reference>
-    <Reference Include="MeloongCore.Wpf">
-      <HintPath>..\PCLCS\bin\MeloongCore.Wpf.dll</HintPath>
-      <Private>False</Private>
-    </Reference>
-    <Reference Include="PCLCS">
-      <HintPath>..\PCLCS\bin\PCLCS.dll</HintPath>
-      <Private>False</Private>
-    </Reference>
+    <ProjectReference Include="..\MeloongCore\Shared\MeloongCore.csproj">
+      <Project>{d22bbf3c-2177-0208-4e29-8466aa41ac6f}</Project>
+      <Name>MeloongCore</Name>
+    </ProjectReference>
+    <ProjectReference Include="..\MeloongCore\Wpf\MeloongCore.Wpf.csproj">
+      <Project>{2dffe2a0-1101-816b-d240-f644b2d74a68}</Project>
+      <Name>MeloongCore.Wpf</Name>
+    </ProjectReference>
+    <ProjectReference Include="..\PCLCS\PCLCS.csproj">
+      <Project>{32de4aaf-f4d6-42c5-9604-19236de96c69}</Project>
+      <Name>PCLCS</Name>
+      <Private>True</Private>
+    </ProjectReference>
     <Reference Include="netstandard">
       <HintPath>$(FrameworkPathOverride)\Facades\netstandard.dll</HintPath>
       <Private>False</Private>
