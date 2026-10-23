@@ -36,6 +36,11 @@ Module SduBareClientTests
             Run("invalid source version names are rejected before writes", AddressOf InvalidSourceVersion)
             Run("archive markers retain actual paths and ignore separator/case differences", AddressOf ArchiveMarkers)
             Run("manual exports preserve extensions and never reuse stale packages", AddressOf ManualExports)
+            Run("long cached library paths install and clean staging", AddressOf LongCachePaths)
+            Run("deep game roots publish ordinary instance paths", AddressOf DeepGameRoot)
+            Run("long-path cancellation removes only owned staging", AddressOf LongPathCancellation)
+            Run("long-path cache conflicts preserve existing bytes", AddressOf LongPathConflict)
+            Run("long-path mods updates retain complete backups", AddressOf LongPathModsUpdate)
             Console.WriteLine("PASS: " & Passed & " bare-client filesystem scenarios (production installer, real temporary ZIP/files).")
         Catch ErrorValue As Exception
             Console.Error.WriteLine(ErrorValue.ToString())
@@ -91,8 +96,12 @@ Module SduBareClientTests
         Public Archive As ZipArchive
         Public Result As SduBareClientInstaller.InstallResult
 
-        Public Sub New(Optional Extra As KeyValuePair(Of String, String)() = Nothing, Optional Json As String = "{""id"":""pack-id"",""jar"":""pack-id""}", Optional Prefix As String = "Wrapper/.minecraft/")
+        Public Sub New(Optional Extra As KeyValuePair(Of String, String)() = Nothing, Optional Json As String = "{""id"":""pack-id"",""jar"":""pack-id""}", Optional Prefix As String = "Wrapper/.minecraft/", Optional Depth As Integer = 0)
             Directory.CreateDirectory(Root)
+            If Depth > 0 Then
+                Mc = Path.Combine(Root, New String("d"c, Depth), "mc")
+                Target = Path.Combine(Mc, "versions", "Website Instance")
+            End If
             Using Writer As New ZipArchive(Data, ZipArchiveMode.Create, True)
                 If Json IsNot Nothing Then AddEntry(Writer, Prefix & "versions/pack-id/pack-id.json", Json)
                 If Extra IsNot Nothing Then
@@ -121,9 +130,63 @@ Module SduBareClientTests
             Data.Dispose()
             '测试目录仅为当前 executable 下创建的 GUID 子目录。
             Check(Path.GetFullPath(Root).StartsWith(Path.GetFullPath(TestRoot) & Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase), "Unsafe fixture cleanup")
-            If Directory.Exists(Root) Then Directory.Delete(Root, True)
+            If Directory.Exists(Root) Then SduFileSystem.Directory.Delete(Root, True)
         End Sub
     End Class
+
+    Private Const LongLibrary As String = "libraries/com/fasterxml/jackson/core/jackson-annotations/2.13.4/jackson-annotations-2.13.4.jar"
+
+    Private Sub LongCachePaths()
+        Using F As New Fixture({Pair(LongLibrary, "library bytes")})
+            Check(Path.Combine(F.Mc, ".sdu-install-" & New String("0"c, 32), "cache", LongLibrary).Length > 260, "Fixture does not reproduce original long extraction path")
+            F.Install()
+            EqualFile(Path.Combine(F.Mc, LongLibrary), "library bytes")
+            Check(Directory.GetDirectories(F.Mc, ".sdu-install-*").Length = 0, "Long cache remained in staging")
+        End Using
+    End Sub
+
+    Private Sub DeepGameRoot()
+        Using F As New Fixture({Pair(LongLibrary, "deep library"), Pair("mods/" & New String("m"c, 120) & ".jar", "deep mod")}, Depth:=110)
+            Dim Installed = F.Install()
+            Check(Installed.TrimEnd("\"c) = F.Target AndAlso Not Installed.StartsWith("\\?\"), "Returned path exposes native prefix")
+            EqualFile(Path.Combine(F.Mc, LongLibrary), "deep library")
+            EqualFile(Path.Combine(F.Target, "mods", New String("m"c, 120) & ".jar"), "deep mod")
+            Check(SduFileSystem.Directory.GetDirectories(F.Mc).All(Function(Name) Not Name.StartsWith("\\?\")), "Enumeration exposes native prefix")
+        End Using
+    End Sub
+
+    Private Sub LongPathCancellation()
+        Using F As New Fixture({Pair(LongLibrary, "library"), Pair("mods/test.jar", "mod")}, Depth:=110)
+            Using Cancellation As New CancellationTokenSource()
+                Expect(Of OperationCanceledException)(Sub() F.Install(Cancellation.Token, Progress:=Sub(Value) Cancellation.Cancel()))
+            End Using
+            Check(Not SduFileSystem.Directory.Exists(F.Target), "Canceled deep instance was published")
+            Check(Not SduFileSystem.Directory.GetDirectories(F.Mc).Any(Function(Name) Path.GetFileName(Name).StartsWith(".sdu-install-")), "Deep staging was not removed")
+        End Using
+    End Sub
+
+    Private Sub LongPathConflict()
+        Using F As New Fixture({Pair(LongLibrary, "package library")}, Depth:=110)
+            Dim Existing = Path.Combine(F.Mc, LongLibrary)
+            Put(Existing, "original library")
+            Expect(Of IOException)(Sub() F.Install())
+            EqualFile(Existing, "original library")
+            Check(Not SduFileSystem.Directory.Exists(F.Target), "Conflicting deep instance was published")
+        End Using
+    End Sub
+
+    Private Sub LongPathModsUpdate()
+        Using F As New Fixture({Pair("mods/new.jar", "new mod")}, Depth:=110)
+            Put(Path.Combine(F.Target, "Website Instance.json"), "{}")
+            Put(Path.Combine(F.Target, "mods", New String("o"c, 120) & ".jar"), "old mod")
+            Put(Path.Combine(F.Target, "saves", "world", "level.dat"), "save bytes")
+            F.Install()
+            Check(F.Result.UpdatedMods AndAlso F.Result.ModsBackup IsNot Nothing, "Deep instance was not updated with backup")
+            EqualFile(Path.Combine(F.Result.ModsBackup, New String("o"c, 120) & ".jar"), "old mod")
+            EqualFile(Path.Combine(F.Target, "mods", "new.jar"), "new mod")
+            EqualFile(Path.Combine(F.Target, "saves", "world", "level.dat"), "save bytes")
+        End Using
+    End Sub
 
     Private Sub IsolatedLayout()
         Using F As New Fixture({Pair("mods/root.jar", "mod"), Pair("config/test.cfg", "root config"), Pair("saves/world/level.dat", "pack save"),
@@ -474,7 +537,7 @@ Module SduBareClientTests
 
     Private Sub SetIsolation(Stage As String)
         Dim IniPath = Path.Combine(Stage, "PCL", "Setup.ini")
-        Dim Existing = If(File.Exists(IniPath), File.ReadAllLines(IniPath), New String() {})
+        Dim Existing = If(SduFileSystem.File.Exists(IniPath), File.ReadAllLines(SduFileSystem.ToIoPath(IniPath)), New String() {})
         Dim Retained = Existing.Where(Function(Line) Not Line.StartsWith("VersionArgumentIndie:") AndAlso Not Line.StartsWith("VersionArgumentIndieV2:"))
         Put(IniPath, String.Join(vbCrLf, Retained.Concat({"VersionArgumentIndie:1", "VersionArgumentIndieV2:True", ""})))
     End Sub
@@ -490,11 +553,11 @@ Module SduBareClientTests
         Return Entry
     End Function
     Private Sub Put(FilePath As String, Value As String)
-        Directory.CreateDirectory(Path.GetDirectoryName(FilePath))
-        File.WriteAllText(FilePath, Value, New UTF8Encoding(False))
+        SduFileSystem.Directory.CreateDirectory(Path.GetDirectoryName(FilePath))
+        SduFileSystem.File.WriteAllText(FilePath, Value, New UTF8Encoding(False))
     End Sub
     Private Sub EqualFile(FilePath As String, Value As String)
-        Check(File.Exists(FilePath) AndAlso File.ReadAllText(FilePath) = Value, "File content differs: " & FilePath)
+        Check(SduFileSystem.File.Exists(FilePath) AndAlso SduFileSystem.File.ReadAllText(FilePath, Encoding.UTF8) = Value, "File content differs: " & FilePath)
     End Sub
     Private Sub Check(Condition As Boolean, Message As String)
         If Not Condition Then Throw New Exception(Message)

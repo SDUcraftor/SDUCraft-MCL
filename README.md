@@ -14,7 +14,7 @@
 | --- | --- |
 | 开源基线 | `Meloong-Git/PCL`，`main` 分支，提交 `6b9a50d` |
 | 基线版本 | `2.99.0.0` 正式版 |
-| 本分支版本 | `1.2.1`（SDUcraft 修改版） |
+| 本分支版本 | `1.2.2`（SDUcraft 修改版） |
 | 技术栈 | WPF / VB.NET / .NET Framework 4.8 |
 | 构建产物 | `Plain Craft Launcher 2.exe` |
 
@@ -91,6 +91,8 @@ msbuild "Plain Craft Launcher 2\Plain Craft Launcher 2.vbproj" -p:Configuration=
 - 登录仅使用 `https://skin.sducraft.cn/api/yggdrasil`，已移除微软登录 Client ID 配置入口。CurseForge API Key 仍在「设置 → 启动 → SDUcraft 接入配置」中填写，或通过环境变量 `PCL_CURSEFORGE_API_KEY` 提供。
 
 ## 启动器自动更新
+
+裸客户端安装对长路径使用 Windows 扩展路径访问，避免深目录下的依赖库、暂存文件、mods 备份超过传统长度限制时安装失败。无需修改系统的长路径开关，实例路径和界面仍显示普通路径。
 
 正式版通过本仓库 GitHub Releases 检查启动器更新，可自动下载或下载前提示，校验后在退出时替换程序，并保留旧文件用于恢复。设置 → 启动器中的「检查更新」可手动触发。此流程保留游戏与用户设置，整合包的 mods 更新单独操作。
 

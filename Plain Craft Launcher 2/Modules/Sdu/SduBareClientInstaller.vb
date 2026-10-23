@@ -26,13 +26,13 @@ Friend Module SduBareClientInstaller
         If String.IsNullOrWhiteSpace(ProjectId) Then Return ProposedName
         Dim Versions = Path.Combine(McFolder, "versions")
         Dim Matches As New List(Of String)
-        If Directory.Exists(Versions) Then
-            For Each Folder In Directory.GetDirectories(Versions)
+        If SduFileSystem.Directory.Exists(Versions) Then
+            For Each Folder In SduFileSystem.Directory.GetDirectories(Versions)
                 Dim Marker = Path.Combine(Folder, "PCL", "SduPack.json")
-                If Not File.Exists(Marker) Then Continue For
+                If Not SduFileSystem.File.Exists(Marker) Then Continue For
                 Dim SavedId As String
                 Try
-                    SavedId = CStr(JObject.Parse(File.ReadAllText(Marker, Encoding.UTF8))("sduProjectId"))
+                    SavedId = CStr(JObject.Parse(SduFileSystem.File.ReadAllText(Marker, Encoding.UTF8))("sduProjectId"))
                 Catch ex As Exception When TypeOf ex Is IOException OrElse TypeOf ex Is Newtonsoft.Json.JsonException OrElse TypeOf ex Is UnauthorizedAccessException
                     '损坏的标记不能作为覆盖任意目录的依据。
                     Continue For
@@ -93,18 +93,18 @@ Friend Module SduBareClientInstaller
         RejectReparseParents(Root, Target)
         Dim Plan = BuildPlan(Archive, Source, InstanceName)
         Token.ThrowIfCancellationRequested()
-        If Directory.Exists(Target) Then Return UpdateMods(Plan, Root, Target, InstanceName, Token, Progress)
+        If SduFileSystem.Directory.Exists(Target) Then Return UpdateMods(Plan, Root, Target, InstanceName, Token, Progress)
         EnsureMissingTarget(Target)
 
-        '暂存目录位于游戏根目录下，发布实例时可用同盘 Directory.Move，目标已存在时必定失败。
-        Directory.CreateDirectory(Root)
+        '暂存目录位于游戏根目录下，发布实例时可用同盘 SduFileSystem.Directory.Move，目标已存在时必定失败。
+        SduFileSystem.Directory.CreateDirectory(Root)
         Dim Staging = ChildPath(Root, ".sdu-install-" & Guid.NewGuid().ToString("N"))
-        If Directory.Exists(Staging) OrElse File.Exists(Staging) Then Throw New IOException("暂存目录已存在。")
-        Directory.CreateDirectory(Staging)
+        If SduFileSystem.Directory.Exists(Staging) OrElse SduFileSystem.File.Exists(Staging) Then Throw New IOException("暂存目录已存在。")
+        SduFileSystem.Directory.CreateDirectory(Staging)
         Try
             Dim VersionStage = Path.Combine(Staging, "instance")
             Dim CacheStage = Path.Combine(Staging, "cache")
-            Directory.CreateDirectory(VersionStage)
+            SduFileSystem.Directory.CreateDirectory(VersionStage)
             Dim Total As Long = Plan.Sum(Function(File) File.Entry.Length)
             '解压炸弹防护：解压后总量超过上限时拒绝安装
             If Total > 20L * 1024 * 1024 * 1024 Then
@@ -114,8 +114,8 @@ Friend Module SduBareClientInstaller
             For Each File In Plan
                 Token.ThrowIfCancellationRequested()
                 Dim Destination = ChildPath(If(File.SharedCache, CacheStage, VersionStage), File.RelativePath)
-                Directory.CreateDirectory(Path.GetDirectoryName(Destination))
-                Using Input = File.Entry.Open(), Output As New FileStream(Destination, FileMode.CreateNew, FileAccess.Write)
+                SduFileSystem.Directory.CreateDirectory(Path.GetDirectoryName(Destination))
+                Using Input = File.Entry.Open(), Output As New FileStream(SduFileSystem.ToIoPath(Destination), FileMode.CreateNew, FileAccess.Write)
                     CopyWithCancellation(Input, Output, Token)
                 End Using
                 Done += File.Entry.Length
@@ -124,16 +124,16 @@ Friend Module SduBareClientInstaller
 
             '目录名、主 JSON、主 JAR 和 JSON 内部的自身引用均使用同一网站实例名。
             Dim JsonPath = Path.Combine(VersionStage, InstanceName & ".json")
-            Dim Json = JObject.Parse(File.ReadAllText(JsonPath, Encoding.UTF8))
+            Dim Json = JObject.Parse(SduFileSystem.File.ReadAllText(JsonPath, Encoding.UTF8))
             Json("id") = InstanceName
             If String.Equals(CStr(Json("jar")), Source.VersionName, StringComparison.OrdinalIgnoreCase) Then Json("jar") = InstanceName
             If String.Equals(CStr(Json("inheritsFrom")), Source.VersionName, StringComparison.OrdinalIgnoreCase) Then
                 Throw New InvalidDataException("版本 JSON 的 inheritsFrom 不能指向自身。")
             End If
-            File.WriteAllText(JsonPath, Json.ToString(), New UTF8Encoding(False))
+            SduFileSystem.File.WriteAllText(JsonPath, Json.ToString(), New UTF8Encoding(False))
             ConfigureInstance(VersionStage & Path.DirectorySeparatorChar)
             'WriteIni 会记录错误而不抛出；直接读取磁盘，避免隔离设置写入失败后仍发布实例。
-            Dim Ini = File.ReadAllText(Path.Combine(VersionStage, "PCL", "Setup.ini"), Encoding.UTF8)
+            Dim Ini = SduFileSystem.File.ReadAllText(Path.Combine(VersionStage, "PCL", "Setup.ini"), Encoding.UTF8)
             If Not Regex.IsMatch(Ini, "(?im)^VersionArgumentIndie:1\r?$") OrElse
                Not Regex.IsMatch(Ini, "(?im)^VersionArgumentIndieV2:True\r?$") Then
                 Throw New IOException("版本隔离设置未成功写入，已停止安装。")
@@ -146,7 +146,7 @@ Friend Module SduBareClientInstaller
                 Token.ThrowIfCancellationRequested()
                 Dim Destination = ChildPath(Root, File.RelativePath)
                 RejectReparseParents(Root, Destination)
-                If IO.File.Exists(Destination) AndAlso Not SameContents(ChildPath(CacheStage, File.RelativePath), Destination, Token) Then
+                If SduFileSystem.File.Exists(Destination) AndAlso Not SameContents(ChildPath(CacheStage, File.RelativePath), Destination, Token) Then
                     Throw New IOException("公共缓存中已有不同内容的文件，已保留原文件：" & Destination)
                 End If
             Next
@@ -154,27 +154,27 @@ Friend Module SduBareClientInstaller
                 Token.ThrowIfCancellationRequested()
                 Dim Destination = ChildPath(Root, File.RelativePath)
                 RejectReparseParents(Root, Destination)
-                Directory.CreateDirectory(Path.GetDirectoryName(Destination))
+                SduFileSystem.Directory.CreateDirectory(Path.GetDirectoryName(Destination))
                 Dim Cached = ChildPath(CacheStage, File.RelativePath)
                 Try
-                    IO.File.Move(Cached, Destination)
+                    SduFileSystem.File.Move(Cached, Destination)
                 Catch ex As IOException
                     '其他安装任务可能刚写入相同缓存，只接受内容完全一致的结果。
-                    If Not IO.File.Exists(Destination) OrElse Not SameContents(Cached, Destination, Token) Then Throw
+                    If Not SduFileSystem.File.Exists(Destination) OrElse Not SameContents(Cached, Destination, Token) Then Throw
                 End Try
             Next
 
             Token.ThrowIfCancellationRequested()
             RejectReparseParents(Root, Target)
-            Directory.CreateDirectory(Path.GetDirectoryName(Target))
+            SduFileSystem.Directory.CreateDirectory(Path.GetDirectoryName(Target))
             EnsureMissingTarget(Target)
-            Directory.Move(VersionStage, Target)
+            SduFileSystem.Directory.Move(VersionStage, Target)
             '发布后不再响应取消或回滚目标，避免删除已经可用、可能被用户打开的实例。
             Return New InstallResult With {.InstanceFolder = Target & Path.DirectorySeparatorChar}
         Finally
             'Staging 是本次 GUID 目录，发布后的 Target 不在其中；绝不根据实例名清理目录。
             Try
-                If Directory.Exists(Staging) Then Directory.Delete(Staging, True)
+                If SduFileSystem.Directory.Exists(Staging) Then SduFileSystem.Directory.Delete(Staging, True)
             Catch ex As Exception When TypeOf ex Is IOException OrElse TypeOf ex Is UnauthorizedAccessException
                 Diagnostics.Trace.TraceWarning("无法清理 SDUcraft 暂存目录 {0}：{1}", Staging, ex.Message)
             End Try
@@ -186,20 +186,20 @@ Friend Module SduBareClientInstaller
                                 Token As CancellationToken, Progress As Action(Of Double)) As InstallResult
         SyncLock UpdateLocks.GetOrAdd(Target, Function(Key) New Object())
             Token.ThrowIfCancellationRequested()
-            If Not File.Exists(Path.Combine(Target, InstanceName & ".json")) Then
+            If Not SduFileSystem.File.Exists(Path.Combine(Target, InstanceName & ".json")) Then
                 Throw New IOException("目标目录不是可识别的 Minecraft 实例，已保留原目录：" & Target)
             End If
             Dim Mods = Plan.Where(Function(File) Not File.SharedCache AndAlso File.RelativePath.StartsWith("mods/", StringComparison.OrdinalIgnoreCase)).ToList()
             If Mods.Count = 0 Then Throw New InvalidDataException("包中没有 mods 文件，已保留现有模组；不能将空目录作为更新覆盖。")
             Dim CurrentMods = Path.Combine(Target, "mods")
             RejectReparseParents(Root, CurrentMods)
-            If File.Exists(CurrentMods) Then Throw New IOException("实例的 mods 路径已被文件占用，已停止更新。")
+            If SduFileSystem.File.Exists(CurrentMods) Then Throw New IOException("实例的 mods 路径已被文件占用，已停止更新。")
             Dim Staging = ChildPath(Root, ".sdu-install-" & Guid.NewGuid().ToString("N"))
-            If Directory.Exists(Staging) OrElse File.Exists(Staging) Then Throw New IOException("暂存目录已存在。")
-            Directory.CreateDirectory(Staging)
+            If SduFileSystem.Directory.Exists(Staging) OrElse SduFileSystem.File.Exists(Staging) Then Throw New IOException("暂存目录已存在。")
+            SduFileSystem.Directory.CreateDirectory(Staging)
             Dim ModsStage = Path.Combine(Staging, "mods")
             Try
-                Directory.CreateDirectory(ModsStage)
+                SduFileSystem.Directory.CreateDirectory(ModsStage)
                 Dim Total As Long = Mods.Sum(Function(File) File.Entry.Length)
                 '解压炸弹防护：mods 更新总量超过上限时拒绝
                 If Total > 5L * 1024 * 1024 * 1024 Then
@@ -209,8 +209,8 @@ Friend Module SduBareClientInstaller
                 For Each File In Mods
                     Token.ThrowIfCancellationRequested()
                     Dim Destination = ChildPath(ModsStage, File.RelativePath.Substring("mods/".Length))
-                    Directory.CreateDirectory(Path.GetDirectoryName(Destination))
-                    Using Input = File.Entry.Open(), Output As New FileStream(Destination, FileMode.CreateNew, FileAccess.Write)
+                    SduFileSystem.Directory.CreateDirectory(Path.GetDirectoryName(Destination))
+                    Using Input = File.Entry.Open(), Output As New FileStream(SduFileSystem.ToIoPath(Destination), FileMode.CreateNew, FileAccess.Write)
                         CopyWithCancellation(Input, Output, Token)
                     End Using
                     Done += File.Entry.Length
@@ -219,16 +219,16 @@ Friend Module SduBareClientInstaller
                 Token.ThrowIfCancellationRequested()
                 RejectReparseParents(Root, CurrentMods)
                 Dim Backup As String = Nothing
-                If Directory.Exists(CurrentMods) Then
+                If SduFileSystem.Directory.Exists(CurrentMods) Then
                     Backup = ChildPath(Root, "PCL/SduModBackups/" & InstanceName & "/" & Date.UtcNow.ToString("yyyyMMdd-HHmmss") & "-" & Guid.NewGuid().ToString("N") & "/mods")
                     RejectReparseParents(Root, Backup)
-                    Directory.CreateDirectory(Path.GetDirectoryName(Backup))
+                    SduFileSystem.Directory.CreateDirectory(Path.GetDirectoryName(Backup))
                 End If
-                PublishMods(ModsStage, CurrentMods, Backup, AddressOf Directory.Move)
+                PublishMods(ModsStage, CurrentMods, Backup, AddressOf SduFileSystem.Directory.Move)
                 Return New InstallResult With {.InstanceFolder = Target & Path.DirectorySeparatorChar, .UpdatedMods = True, .ModsBackup = Backup}
             Finally
                 Try
-                    If Directory.Exists(Staging) Then Directory.Delete(Staging, True)
+                    If SduFileSystem.Directory.Exists(Staging) Then SduFileSystem.Directory.Delete(Staging, True)
                 Catch ex As Exception When TypeOf ex Is IOException OrElse TypeOf ex Is UnauthorizedAccessException
                     Diagnostics.Trace.TraceWarning("无法清理 SDUcraft 模组暂存目录 {0}：{1}", Staging, ex.Message)
                 End Try
@@ -293,7 +293,7 @@ Friend Module SduBareClientInstaller
     End Function
 
     Private Sub EnsureMissingTarget(Target As String)
-        If Directory.Exists(Target) OrElse File.Exists(Target) Then
+        If SduFileSystem.Directory.Exists(Target) OrElse SduFileSystem.File.Exists(Target) Then
             Throw New IOException("实例目录已存在，已保留原版本及其存档、配置。请先在版本管理中重命名已有实例，再重新安装：" & Target)
         End If
     End Sub
@@ -319,7 +319,7 @@ Friend Module SduBareClientInstaller
     Private Sub RejectReparseParents(Root As String, Target As String)
         Dim Current = Target
         Do
-            If (Directory.Exists(Current) OrElse File.Exists(Current)) AndAlso (File.GetAttributes(Current) And FileAttributes.ReparsePoint) <> 0 Then
+            If (SduFileSystem.Directory.Exists(Current) OrElse SduFileSystem.File.Exists(Current)) AndAlso (SduFileSystem.File.GetAttributes(Current) And FileAttributes.ReparsePoint) <> 0 Then
                 Throw New IOException("安装目标包含链接或重解析点，已停止写入：" & Current)
             End If
             If Current.TrimEnd(Path.DirectorySeparatorChar).Equals(Root.TrimEnd(Path.DirectorySeparatorChar), StringComparison.OrdinalIgnoreCase) Then Exit Do
@@ -338,8 +338,8 @@ Friend Module SduBareClientInstaller
     End Sub
 
     Private Function SameContents(Left As String, Right As String, Token As CancellationToken) As Boolean
-        If New FileInfo(Left).Length <> New FileInfo(Right).Length Then Return False
-        Using LeftStream = File.OpenRead(Left), RightStream = File.OpenRead(Right)
+        If SduFileSystem.File.Length(Left) <> SduFileSystem.File.Length(Right) Then Return False
+        Using LeftStream = SduFileSystem.File.OpenRead(Left), RightStream = SduFileSystem.File.OpenRead(Right)
             Dim LeftBuffer(65535), RightBuffer(65535) As Byte
             Do
                 Token.ThrowIfCancellationRequested()

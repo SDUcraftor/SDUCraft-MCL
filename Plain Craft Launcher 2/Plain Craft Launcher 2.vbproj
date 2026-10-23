@@ -228,6 +228,7 @@
     <Compile Include="Modules\Sdu\SduDownloadReadStore.vb" />
     <Compile Include="Modules\Sdu\SduLoaderBridge.vb" />
     <Compile Include="Modules\Sdu\SduBareClientInstaller.vb" />
+    <Compile Include="Modules\Sdu\SduFileSystem.vb" />
     <Compile Include="Modules\Sdu\SduModpackAdapter.vb" />
     <Compile Include="Modules\Sdu\SduPackageFiles.vb" />
     <Compile Include="Modules\Sdu\SduInstallOutcome.vb" />

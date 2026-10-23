@@ -82,12 +82,12 @@ Public Module SduModpackAdapter
                 Logger.Info($"检测到裸客户端整包，原版本：{Layout.VersionName}，安装实例：{InstanceName}")
                 Dim Result = SduBareClientInstaller.Install(Archive, Layout, McFolder, InstanceName, Task.CreateCancellationToken(),
                     Sub(VersionStage)
-                        Dim IniPath = VersionStage & "PCL\Setup.ini"
+                        Dim IniPath = SduFileSystem.ToIoPath(VersionStage & "PCL\Setup.ini")
                         WriteIni(IniPath, "VersionArgumentIndie", 1)
                         WriteIni(IniPath, "VersionArgumentIndieV2", True)
                         IniClearCache(IniPath)
                         Dim Marker As New JObject From {{"sduProjectId", Item.Id}}
-                        File.WriteAllText(VersionStage & "PCL\SduPack.json", Marker.ToString(), New System.Text.UTF8Encoding(False))
+                        SduFileSystem.File.WriteAllText(VersionStage & "PCL\SduPack.json", Marker.ToString(), New System.Text.UTF8Encoding(False))
                     End Sub, Sub(Value) Task.Progress = Value)
                 If Result.UpdatedMods Then
                     Logger.Info($"已仅更新 {InstanceName} 的 mods，旧模组备份：{If(Result.ModsBackup, "原实例没有 mods 目录")}")
