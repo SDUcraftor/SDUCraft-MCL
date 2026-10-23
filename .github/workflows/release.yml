@@ -80,6 +80,8 @@ jobs:
         run: .\tests\Run-SduUpdateIntegrationTests.ps1 -Executable 'Plain Craft Launcher 2\bin\Plain Craft Launcher 2.exe'
       - name: Test settings and help layout
         run: .\tests\Run-SduSettingsLayoutTests.ps1 -Executable 'Plain Craft Launcher 2\bin\Plain Craft Launcher 2.exe'
+      - name: Test pack formats and update records
+        run: .\tests\Run-SduPackFormatTests.ps1 -Executable 'Plain Craft Launcher 2\bin\Plain Craft Launcher 2.exe'
       - name: Prepare update assets
         env:
           RELEASE_NOTES: ${{ github.event.inputs.notes }}

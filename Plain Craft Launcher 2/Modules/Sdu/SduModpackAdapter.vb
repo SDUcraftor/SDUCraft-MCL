@@ -5,9 +5,9 @@ Imports System.IO.Compression
 ''' SDUcraft 整合包适配器：先检测官网包结构，再按结构分派安装。
 ''' 已知结构（自动安装）：
 '''  - mrpack/Modrinth（modrinth.index.json，根或一级目录）：交给 ModpackInstall。
-'''  - 带启动器压缩包（modpack.mrpack / modpack.zip）：提取内层 mrpack 后交给 ModpackInstall。
+'''  - 带启动器压缩包（modpack.mrpack / modpack.zip）：提取后再次识别内层包的实际格式。
 '''  - CurseForge/MCBBS/HMCL/MMC（manifest.json、mcbbs.packmeta、modpack.json、mmc-pack.json）：交给 ModpackInstall 自动识别。
-'''  - 裸客户端整包：首次安装暂存后发布隔离实例；已有实例仅同步 mods，并备份旧 mods。
+'''  - 所有支持格式：首次完整安装；已有实例按模组 ID 合并 mods，保留独有内容并备份旧 mods。
 '''  - 纯资源包（pack.mcmeta + pack.png）：拒绝安装。
 ''' 未知结构：把下载包复制到 PCL 目录下的 SduDownload 文件夹并打开资源管理器，让用户手动安装。
 ''' 此函数必须在工作线程中调用。
@@ -17,7 +17,16 @@ Public Module SduModpackAdapter
     ''' <summary>
     ''' 检测整合包结构并执行安装。Task 用于反馈安装进度（0~1）。
     ''' </summary>
-    Public Sub AdaptAndInstall(DownloadedFile As String, Item As SduGameDownload, Task As LoaderTask(Of Integer, Integer), InstanceName As String, McFolder As String)
+    Public Sub AdaptAndInstall(DownloadedFile As String, Item As SduGameDownload, Task As LoaderTask(Of Integer, Integer), InstanceName As String, McFolder As String,
+                               Optional AllowDuringLaunch As Boolean = False)
+        SduBareClientInstaller.ValidateSegment(InstanceName)
+        Using Reservation = SduPackUpdate.Reserve(Path.Combine(McFolder, "versions", InstanceName), AllowDuringLaunch)
+            AdaptPackage(DownloadedFile, Item, Task, InstanceName, McFolder, 0)
+        End Using
+    End Sub
+
+    Private Sub AdaptPackage(DownloadedFile As String, Item As SduGameDownload, Task As LoaderTask(Of Integer, Integer), InstanceName As String, McFolder As String, Depth As Integer)
+        If Depth > 4 Then Throw New InvalidDataException("整合包嵌套层数过多。")
         Logger.Info($"SDUcraft 整合包适配：{Item.Name} → 实例 {InstanceName}（{DownloadedFile}）")
 
         Dim Archive As ZipArchive = Nothing
@@ -31,7 +40,7 @@ Public Module SduModpackAdapter
                 Logger.Info("检测到 Modrinth/mrpack 整合包，直接安装")
                 Archive.Dispose()
                 Archive = Nothing
-                InstallKnownPack(DownloadedFile, InstanceName, McFolder, Task)
+                InstallKnownPack(DownloadedFile, InstanceName, McFolder, Task, Item)
                 Return
             End If
 
@@ -49,14 +58,14 @@ Public Module SduModpackAdapter
             If InnerEntry IsNot Nothing Then
                 Logger.Info($"检测到带启动器的整合包，提取内层 {InnerEntry.FullName}")
                 Dim TempFolder As String = RequestTaskTempFolder()
-                Dim MrpackPath As String = TempFolder & "modpack.mrpack"
+                Dim MrpackPath As String = TempFolder & "inner-pack" & Path.GetExtension(InnerEntry.FullName)
                 Using EntryStream As Stream = InnerEntry.Open()
                     FileUtils.Write(MrpackPath, EntryStream)
                 End Using
                 Archive.Dispose()
                 Archive = Nothing
-                Logger.Info($"内层 modpack.mrpack 已提取至：{MrpackPath}")
-                InstallKnownPack(MrpackPath, InstanceName, McFolder, Task)
+                Logger.Info($"内层整合包已提取至：{MrpackPath}")
+                AdaptPackage(MrpackPath, Item, Task, InstanceName, McFolder, Depth + 1)
                 Return
             End If
 
@@ -67,7 +76,7 @@ Public Module SduModpackAdapter
                 Logger.Info("检测到 CurseForge/MCBBS/HMCL/MMC 类整合包，交由 ModpackInstall 识别安装")
                 Archive.Dispose()
                 Archive = Nothing
-                InstallKnownPack(DownloadedFile, InstanceName, McFolder, Task)
+                InstallKnownPack(DownloadedFile, InstanceName, McFolder, Task, Item)
                 Return
             End If
 
@@ -86,11 +95,11 @@ Public Module SduModpackAdapter
                         WriteIni(IniPath, "VersionArgumentIndie", 1)
                         WriteIni(IniPath, "VersionArgumentIndieV2", True)
                         IniClearCache(IniPath)
-                        Dim Marker As New JObject From {{"sduProjectId", Item.Id}}
-                        SduFileSystem.File.WriteAllText(VersionStage & "PCL\SduPack.json", Marker.ToString(), New System.Text.UTF8Encoding(False))
+                        SduPackRecord.Save(VersionStage, Item)
                     End Sub, Sub(Value) Task.Progress = Value)
+                If Result.UpdatedMods Then SduPackRecord.Save(Result.InstanceFolder, Item)
                 If Result.UpdatedMods Then
-                    Logger.Info($"已仅更新 {InstanceName} 的 mods，旧模组备份：{If(Result.ModsBackup, "原实例没有 mods 目录")}")
+                    Logger.Info($"已仅更新 {InstanceName} 的 mods，旧模组备份：{If(Result.ModsBackup, "模组未变化或原实例没有 mods 目录")}")
                     Hint($"{InstanceName} 的模组已更新。" & If(Result.ModsBackup Is Nothing, "", vbCrLf & "旧模组备份：" & Result.ModsBackup), HintType.Blue)
                 Else
                     Logger.Info($"裸客户端已安装至 {Result.InstanceFolder}（已开启版本隔离）")
@@ -123,14 +132,35 @@ Public Module SduModpackAdapter
         End Try
     End Sub
 
-    Private Sub InstallKnownPack(FilePath As String, InstanceName As String, McFolder As String, Task As LoaderTask(Of Integer, Integer))
+    Private Sub InstallKnownPack(FilePath As String, InstanceName As String, McFolder As String, Task As LoaderTask(Of Integer, Integer), Item As SduGameDownload)
         Dim Target = Path.Combine(McFolder, "versions", InstanceName)
-        '标准格式的官方安装器会复制 overrides/配置及重建游戏文件，不能当成“仅更新 mods”。
-        If Directory.Exists(Target) OrElse File.Exists(Target) Then
-            Throw New IOException("此格式暂不支持仅更新 mods，已停止安装以保留现有实例。请手动更新 mods，或先重命名旧实例后全新安装：" & InstanceName)
-        End If
         If Not PathUtils.IsSame(McFolder, McFolderSelected) Then Throw New IOException("安装期间切换了 Minecraft 文件夹，请重新发起安装。")
-        SduLoaderBridge.WaitForCompletion(ModpackInstall(FilePath, InstanceName, ShowNotifications:=False), Task)
+        If SduFileSystem.File.Exists(Target) Then Throw New IOException("实例路径被文件占用。")
+        If SduFileSystem.Directory.Exists(Target) Then
+            '各格式安装器只在独立目录准备模组，不安装游戏本体或写入原实例。
+            Dim Staging = Path.Combine(RequestTaskTempFolder(), "sdu-update-" & Guid.NewGuid().ToString("N"))
+            SduFileSystem.Directory.CreateDirectory(Staging)
+            Try
+                SduLoaderBridge.WaitForCompletion(ModpackInstall(FilePath, InstanceName, ShowNotifications:=False, PreparationFolder:=Staging), Task)
+                Dim Result = SduModMerge.Apply(McFolder, Target, Path.Combine(Staging, "mods"), Task.CreateCancellationToken())
+                Logger.Info("整合包模组已合并，旧模组备份：" & If(Result.ModsBackup, "无旧模组"))
+            Finally
+                Try
+                    If SduFileSystem.Directory.Exists(Staging) Then SduFileSystem.Directory.Delete(Staging, True)
+                Catch ex As Exception When TypeOf ex Is IOException OrElse TypeOf ex Is UnauthorizedAccessException
+                    Logger.Warn(ex, "清理整合包更新暂存目录失败")
+                End Try
+            End Try
+        Else
+            SduLoaderBridge.WaitForCompletion(ModpackInstall(FilePath, InstanceName, ShowNotifications:=False), Task)
+            If Not SduFileSystem.File.Exists(Path.Combine(Target, InstanceName & ".json")) Then Throw New IOException("安装器未生成预期实例。")
+            Dim Ini = SduFileSystem.ToIoPath(Path.Combine(Target, "PCL", "Setup.ini"))
+            WriteIni(Ini, "VersionArgumentIndie", 1)
+            WriteIni(Ini, "VersionArgumentIndieV2", True)
+            IniClearCache(Ini)
+        End If
+        SduPackRecord.Save(Target, Item)
+        LoaderFolderRun(McInstanceListLoader, McFolder, LoaderFolderRunType.ForceRun, MaxDepth:=1, ExtraPath:="versions\", WaitForExit:=True)
     End Sub
 
 End Module

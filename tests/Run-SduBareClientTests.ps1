@@ -23,6 +23,7 @@ try {
         "/r:$framework\System.IO.Compression.dll", "/r:$framework\System.Runtime.Serialization.dll", "/r:$json",
         (Join-Path $repository 'Plain Craft Launcher 2\Modules\Sdu\SduBareClientInstaller.vb'),
         (Join-Path $repository 'Plain Craft Launcher 2\Modules\Sdu\SduFileSystem.vb'),
+        (Join-Path $repository 'Plain Craft Launcher 2\Modules\Sdu\SduModMerge.vb'),
         (Join-Path $repository 'Plain Craft Launcher 2\Modules\Sdu\SduPackageFiles.vb'),
         (Join-Path $PSScriptRoot 'SduBareClientTests.vb')
     )

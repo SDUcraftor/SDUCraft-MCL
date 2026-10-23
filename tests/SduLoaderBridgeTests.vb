@@ -9,6 +9,7 @@ Module SduLoaderBridgeTests
             FailurePropagation()
             ManualInstallIsNotSuccess()
             ParentCancellation()
+            ExternalCancellation()
             ChildCancellation()
             AlreadyFinishedDoesNotRestart()
             AlreadyFailedDoesNotRestart()
@@ -20,6 +21,23 @@ Module SduLoaderBridgeTests
             Console.Error.WriteLine(ErrorValue.ToString())
             Environment.ExitCode = 1
         End Try
+    End Sub
+
+    Private Sub ExternalCancellation()
+        Dim Fixture As New InstallFixture()
+        Using Source As New CancellationTokenSource()
+            Source.CancelAfter(50)
+            Dim Canceled As Boolean
+            Try
+                SduLoaderBridge.WaitForCompletion(Fixture.Child, ExternalToken:=Source.Token)
+            Catch ex As OperationCanceledException
+                Canceled = True
+            End Try
+            Check(Canceled, "Launch cancellation was not propagated")
+            UntilTrue(Function() Fixture.Child.State = LoadState.Canceled, "Launch cancellation left install active")
+            Check(Fixture.Exited.WaitOne(5000), "Launch cancellation left child worker running")
+        End Using
+        Pass("launch cancellation token cancels child install and worker")
     End Sub
 
     Private Class InstallFixture

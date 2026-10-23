@@ -181,7 +181,7 @@ Friend Module SduBareClientInstaller
         End Try
     End Function
 
-    ''' <summary>已存在的实例只同步 mods；旧 mods 永久保留为备份，切换失败则恢复。</summary>
+    ''' <summary>已存在的实例只合并 mods；旧 mods 永久保留为备份，切换失败则恢复。</summary>
     Private Function UpdateMods(Plan As List(Of PlannedFile), Root As String, Target As String, InstanceName As String,
                                 Token As CancellationToken, Progress As Action(Of Double)) As InstallResult
         SyncLock UpdateLocks.GetOrAdd(Target, Function(Key) New Object())
@@ -190,7 +190,6 @@ Friend Module SduBareClientInstaller
                 Throw New IOException("目标目录不是可识别的 Minecraft 实例，已保留原目录：" & Target)
             End If
             Dim Mods = Plan.Where(Function(File) Not File.SharedCache AndAlso File.RelativePath.StartsWith("mods/", StringComparison.OrdinalIgnoreCase)).ToList()
-            If Mods.Count = 0 Then Throw New InvalidDataException("包中没有 mods 文件，已保留现有模组；不能将空目录作为更新覆盖。")
             Dim CurrentMods = Path.Combine(Target, "mods")
             RejectReparseParents(Root, CurrentMods)
             If SduFileSystem.File.Exists(CurrentMods) Then Throw New IOException("实例的 mods 路径已被文件占用，已停止更新。")
@@ -218,14 +217,7 @@ Friend Module SduBareClientInstaller
                 Next
                 Token.ThrowIfCancellationRequested()
                 RejectReparseParents(Root, CurrentMods)
-                Dim Backup As String = Nothing
-                If SduFileSystem.Directory.Exists(CurrentMods) Then
-                    Backup = ChildPath(Root, "PCL/SduModBackups/" & InstanceName & "/" & Date.UtcNow.ToString("yyyyMMdd-HHmmss") & "-" & Guid.NewGuid().ToString("N") & "/mods")
-                    RejectReparseParents(Root, Backup)
-                    SduFileSystem.Directory.CreateDirectory(Path.GetDirectoryName(Backup))
-                End If
-                PublishMods(ModsStage, CurrentMods, Backup, AddressOf SduFileSystem.Directory.Move)
-                Return New InstallResult With {.InstanceFolder = Target & Path.DirectorySeparatorChar, .UpdatedMods = True, .ModsBackup = Backup}
+                Return SduModMerge.Apply(Root, Target, ModsStage, Token)
             Finally
                 Try
                     If SduFileSystem.Directory.Exists(Staging) Then SduFileSystem.Directory.Delete(Staging, True)
@@ -298,7 +290,7 @@ Friend Module SduBareClientInstaller
         End If
     End Sub
 
-    Private Sub ValidateSegment(Value As String)
+    Friend Sub ValidateSegment(Value As String)
         If String.IsNullOrWhiteSpace(Value) OrElse Value = "." OrElse Value = ".." OrElse
            Value.EndsWith(".") OrElse Value.EndsWith(" ") OrElse Value.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0 OrElse IsReservedName(Value) Then
             Throw New InvalidDataException("压缩包或实例名包含无效路径段：" & Value)
@@ -309,14 +301,14 @@ Friend Module SduBareClientInstaller
         Return Regex.IsMatch(Value, "^(CON|PRN|AUX|NUL|CLOCK\$|COM[0-9¹²³]|LPT[0-9¹²³])(?:\.|$)", RegexOptions.IgnoreCase)
     End Function
 
-    Private Function ChildPath(Root As String, Relative As String) As String
+    Friend Function ChildPath(Root As String, Relative As String) As String
         Dim FullRoot = Path.GetFullPath(Root).TrimEnd(Path.DirectorySeparatorChar) & Path.DirectorySeparatorChar
         Dim Result = Path.GetFullPath(Path.Combine(FullRoot, Relative.Replace("/"c, Path.DirectorySeparatorChar)))
         If Not Result.StartsWith(FullRoot, StringComparison.OrdinalIgnoreCase) Then Throw New InvalidDataException("安装路径超出目标目录：" & Relative)
         Return Result
     End Function
 
-    Private Sub RejectReparseParents(Root As String, Target As String)
+    Friend Sub RejectReparseParents(Root As String, Target As String)
         Dim Current = Target
         Do
             If (SduFileSystem.Directory.Exists(Current) OrElse SduFileSystem.File.Exists(Current)) AndAlso (SduFileSystem.File.GetAttributes(Current) And FileAttributes.ReparsePoint) <> 0 Then

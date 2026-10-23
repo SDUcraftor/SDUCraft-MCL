@@ -61,6 +61,10 @@ Public Module ModLaunch
             Hint($"版本 {McInstanceSelected.Name} 正在被修改，请稍后再启动！", HintType.Red)
             Return False
         End If
+        If McInstanceSelected IsNot Nothing AndAlso SduPackUpdate.IsUpdating(McInstanceSelected.PathVersion) Then
+            Hint("该整合包正在更新，请完成后再启动。", HintType.Red)
+            Return False
+        End If
         FrmMain.AprilGiveup()
         '禁止进入版本选择页面（否则就可以在启动中切换 McInstanceSelected 了）
         FrmMain.PageStack = FrmMain.PageStack.Where(Function(p) p.Page <> FormMain.PageType.InstanceSelect).ToList
@@ -143,6 +147,10 @@ Public Module ModLaunch
                     Loaders.Insert(3, New LoaderTask(Of Integer, Integer)("内存优化", AddressOf McLaunchMemoryOptimize) With {.ProgressWeight = 30})
                 Case 2 '关闭
             End Select
+            If Not IsSavingBatch Then
+                Loaders.Insert(0, New LoaderTask(Of Integer, Integer)("检查整合包更新",
+                    Sub(Task) SduPackUpdate.CheckBeforeLaunch(McInstanceSelected, Task.CreateCancellationToken())) With {.ProgressWeight = 1})
+            End If
             Dim LaunchLoader As New LoaderCombo(Of Object)("Minecraft 启动", Loaders) With {.Show = False}
             If McLoginLoader.State = LoadState.Finished Then McLoginLoader.State = LoadState.Waiting '要求重启登录主加载器，它会自行决定是否启动副加载器
             '等待加载器执行并更新 UI

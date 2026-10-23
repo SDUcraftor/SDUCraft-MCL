@@ -1,6 +1,6 @@
 ''' <summary>
 ''' 启动页右侧的 SDUcraft 下载速览面板。
-''' 这个文件只负责面板的数据加载和界面行为；下载项模型与已读状态存储已拆分到 Modules\Sdu。
+''' 这个文件只负责面板的数据加载和界面行为；下载项模型与时间判断位于 Modules\Sdu。
 ''' </summary>
 Partial Public Class PageLaunchRight
 
@@ -26,7 +26,7 @@ Partial Public Class PageLaunchRight
 #Region "界面状态"
 
     Private _SduDownloadItems As List(Of SduDownloadItem)
-    Private _SduDownloadReadIds As HashSet(Of String)
+
     Private _SduDownloadCard As MyCard
     Private _SduDownloadJumpRow As Button
     Private _SduDownloadMoreButton As Button
@@ -98,7 +98,7 @@ Partial Public Class PageLaunchRight
         If _SduDownloadItems Is Nothing Then Return
 
         RemoveSduDownloadPanel()
-        _SduDownloadReadIds = SduDownloadReadStore.ReadIds()
+
         CreateSduDownloadControls()
 
         PanCustom.Children.Insert(0, _SduDownloadCard)
@@ -296,8 +296,7 @@ Partial Public Class PageLaunchRight
 #Region "条目交互"
 
     Private Function CreateSduDownloadCardItem(Item As SduDownloadItem) As Border
-        Dim IsUnread = Not String.IsNullOrEmpty(Item.Id) AndAlso
-                       (_SduDownloadReadIds Is Nothing OrElse Not _SduDownloadReadIds.Contains(Item.Id))
+        Dim IsRecent = Item.IsNew
 
         Dim Border As New Border With {
             .BorderThickness = New Thickness(1),
@@ -318,14 +317,14 @@ Partial Public Class PageLaunchRight
             ItemStyle.Triggers.Add(Highlight)
         Next
         Border.Style = ItemStyle
-        Automation.AutomationProperties.SetName(Border, $"下载并安装 {Item.Name}")
+        Automation.AutomationProperties.SetName(Border, $"下载并安装 {Item.DisplayName}")
         Border.ToolTip = New ToolTip With {
             .MaxWidth = 360,
-            .Content = New TextBlock With {.Text = Item.Name & If(String.IsNullOrWhiteSpace(Item.Intro), "", vbCrLf & Item.Intro), .MaxHeight = 180, .TextWrapping = TextWrapping.Wrap}
+            .Content = New TextBlock With {.Text = Item.DisplayName & If(String.IsNullOrWhiteSpace(Item.Intro), "", vbCrLf & Item.Intro), .MaxHeight = 180, .TextWrapping = TextWrapping.Wrap}
         }
 
         Dim ItemStack As New StackPanel
-        ItemStack.Children.Add(CreateItemTitle(Item, IsUnread))
+        ItemStack.Children.Add(CreateItemTitle(Item, IsRecent))
 
         If Not String.IsNullOrWhiteSpace(Item.Version) OrElse Not String.IsNullOrWhiteSpace(Item.PublishDate) Then
             ItemStack.Children.Add(CreateItemMeta(Item))
@@ -340,20 +339,19 @@ Partial Public Class PageLaunchRight
         AddHandler Border.KeyDown,
             Sub(Sender, Args)
                 If Args.Key <> Key.Enter AndAlso Args.Key <> Key.Space Then Return
-                MarkSduDownloadItemRead(Border, Item.Id)
                 StartSduDownloadInstall(Item.Id)
                 Args.Handled = True
             End Sub
         Return Border
     End Function
 
-    Private Function CreateItemTitle(Item As SduDownloadItem, IsUnread As Boolean) As Grid
+    Private Function CreateItemTitle(Item As SduDownloadItem, IsRecent As Boolean) As Grid
         Dim TitleGrid As New Grid
         TitleGrid.ColumnDefinitions.Add(New ColumnDefinition With {.Width = New GridLength(1, GridUnitType.Star)})
         TitleGrid.ColumnDefinitions.Add(New ColumnDefinition With {.Width = GridLength.Auto})
         TitleGrid.ColumnDefinitions.Add(New ColumnDefinition With {.Width = GridLength.Auto})
         Dim Title As New TextBlock With {
-            .Text = Item.Name,
+            .Text = Item.DisplayName,
             .FontSize = 13,
             .FontWeight = FontWeights.SemiBold,
             .TextTrimming = TextTrimming.CharacterEllipsis,
@@ -363,7 +361,7 @@ Partial Public Class PageLaunchRight
         Title.SetResourceReference(TextBlock.ForegroundProperty, "ColorBrush1")
         TitleGrid.Children.Add(Title)
 
-        If IsUnread Then
+        If IsRecent Then
             Dim Badge = CreateUnreadBadge()
             Grid.SetColumn(Badge, 1)
             TitleGrid.Children.Add(Badge)
@@ -381,7 +379,7 @@ Partial Public Class PageLaunchRight
 
     Private Function CreateUnreadBadge() As Border
         Dim Badge As New Border With {
-            .Tag = "SduUnreadBadge",
+            .Tag = "SduNewBadge",
             .CornerRadius = New CornerRadius(4),
             .Padding = New Thickness(5, 1, 5, 1),
             .HorizontalAlignment = HorizontalAlignment.Right,
@@ -425,7 +423,7 @@ Partial Public Class PageLaunchRight
             Dim HeadingText = Heading.Groups("title").Value
             If HeadingText.IndexOf("Minecraft", StringComparison.OrdinalIgnoreCase) >= 0 OrElse
                HeadingText.IndexOf("SDUcraft", StringComparison.OrdinalIgnoreCase) >= 0 OrElse
-               (Item.Name <> "" AndAlso HeadingText.Contains(Item.Name)) Then
+               (Item.DisplayName <> "" AndAlso HeadingText.Contains(Item.DisplayName)) Then
                 Summary = Summary.Substring(Heading.Length)
             End If
         End If
@@ -448,9 +446,6 @@ Partial Public Class PageLaunchRight
         If ItemBorder Is Nothing Then Return
 
         Dim ItemId = If(ItemBorder.Tag, String.Empty).ToString()
-        If Not String.IsNullOrEmpty(ItemId) Then
-            MarkSduDownloadItemRead(ItemBorder, ItemId)
-        End If
 
         StartSduDownloadInstall(ItemId)
     End Sub
@@ -491,25 +486,6 @@ Partial Public Class PageLaunchRight
         End Sub)
     End Sub
 
-    Private Sub MarkSduDownloadItemRead(ItemBorder As Border, ItemId As String)
-        If String.IsNullOrEmpty(ItemId) Then Return
-        If _SduDownloadReadIds Is Nothing Then
-            _SduDownloadReadIds = New HashSet(Of String)
-        End If
-        If _SduDownloadReadIds.Contains(ItemId) Then Return
-
-        _SduDownloadReadIds.Add(ItemId)
-        SduDownloadReadStore.SaveIds(_SduDownloadReadIds)
-
-        Dim ItemStack = TryCast(ItemBorder.Child, StackPanel)
-        If ItemStack Is Nothing OrElse ItemStack.Children.Count = 0 Then Return
-
-        Dim TitleGrid = TryCast(ItemStack.Children(0), Grid)
-        If TitleGrid Is Nothing Then Return
-
-        Dim Badge = TitleGrid.Children.OfType(Of Border)().FirstOrDefault(Function(Child) Equals(Child.Tag, "SduUnreadBadge"))
-        If Badge IsNot Nothing Then Badge.Visibility = Visibility.Collapsed
-    End Sub
 
 #End Region
 

@@ -108,6 +108,9 @@ jobs:
     - name: Test settings and help layout
       run: .\tests\Run-SduSettingsLayoutTests.ps1 -Executable 'Plain Craft Launcher 2\bin\Plain Craft Launcher 2.exe'
 
+    - name: Test pack formats and update records
+      run: .\tests\Run-SduPackFormatTests.ps1 -Executable 'Plain Craft Launcher 2\bin\Plain Craft Launcher 2.exe'
+
     - name: Upload a Build Artifact
       uses: actions/upload-artifact@v7
       with:

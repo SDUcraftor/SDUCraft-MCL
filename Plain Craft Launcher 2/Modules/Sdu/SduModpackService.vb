@@ -7,6 +7,11 @@ Public Class SduGameDownload
 
     Public Property Id As String = String.Empty
     Public Property Name As String = "未命名整合包"
+    Public ReadOnly Property DisplayName As String
+        Get
+            Return SduDownloadItem.FormatDisplayName(Name)
+        End Get
+    End Property
     Public Property Version As String = String.Empty
     Public Property Author As String = String.Empty
     Public Property PublishDate As String = String.Empty
@@ -14,11 +19,23 @@ Public Class SduGameDownload
     Public Property IntroHtml As String = String.Empty
     Public Property Files As New List(Of SduGameDownloadFile)
 
+    Public ReadOnly Property LatestTime As DateTimeOffset?
+        Get
+            Return SduDownloadItem.NewestTime(ModifyDate, PublishDate, PreferredFile?.ModifyDate)
+        End Get
+    End Property
+
+    Public ReadOnly Property IsNew As Boolean
+        Get
+            Return SduDownloadItem.IsRecent(LatestTime, DateTimeOffset.UtcNow)
+        End Get
+    End Property
+
     ''' <summary>安装时优先使用的文件；当前启动器运行在 Windows 上。</summary>
     Public ReadOnly Property PreferredFile As SduGameDownloadFile
         Get
-            Return Files.FirstOrDefault(
-                Function(File) String.Equals(File.OperatingSystem, "Windows", StringComparison.OrdinalIgnoreCase))
+            Return Files.Where(Function(File) String.Equals(File.OperatingSystem, "Windows", StringComparison.OrdinalIgnoreCase)).
+                OrderByDescending(Function(File) SduDownloadItem.NewestTime(File.ModifyDate)).FirstOrDefault()
         End Get
     End Property
 
@@ -49,16 +66,17 @@ Public Module SduModpackService
     Private Const AllowedHost As String = "www.sducraft.top"
 
     ''' <summary>获取包含有效可安装文件的整合包列表。</summary>
-    Public Function FetchModpacks() As List(Of SduGameDownload)
-        Dim Downloads = ParseDownloads(RequestJson(DownloadApiUrl))
-        Dim Files = ParseFiles(RequestJson(FileSetApiUrl))
+    Public Function FetchModpacks(Optional Token As System.Threading.CancellationToken = Nothing, Optional FastCheck As Boolean = False) As List(Of SduGameDownload)
+        Dim Downloads = ParseDownloads(RequestJson(DownloadApiUrl, Token, FastCheck))
+        Dim Files = ParseFiles(RequestJson(FileSetApiUrl, Token, FastCheck))
 
         For Each Download In Downloads
             Download.Files = Files.Where(Function(File) File.DownloadId = Download.Id).ToList()
         Next
 
         '只显示官网上提供可安装压缩包的项目；纯介绍项或没有 Windows 文件的历史项目不会误装。
-        Return Downloads.Where(Function(Download) Download.PreferredFile IsNot Nothing).ToList()
+        Return Downloads.Where(Function(Download) Download.PreferredFile IsNot Nothing).
+            OrderByDescending(Function(Item) Item.IsNew).ThenByDescending(Function(Item) Item.LatestTime).ToList()
     End Function
 
     Private Function ParseDownloads(Json As String) As List(Of SduGameDownload)
@@ -82,8 +100,8 @@ Public Module SduModpackService
             .Name = If(String.IsNullOrWhiteSpace(ReadString(Item, "name")), "未命名整合包", ReadBoundedString(Item, "name", 200)),
             .Version = ReadBoundedString(Item, "version", 80),
             .Author = ReadBoundedString(Item, "author", 120),
-            .PublishDate = ReadBoundedString(Item, "publish_date", 32),
-            .ModifyDate = ReadBoundedString(Item, "modify_date", 32),
+            .PublishDate = ReadBoundedString(Item, "publish_date", 48),
+            .ModifyDate = ReadBoundedString(Item, "modify_date", 48),
             .IntroHtml = ReadBoundedString(Item, "intro", 4096)
         }
     End Function
@@ -103,7 +121,7 @@ Public Module SduModpackService
             .OperatingSystem = If(String.IsNullOrWhiteSpace(ReadString(Item, "OS")), "Windows", ReadBoundedString(Item, "OS", 24)),
             .SizeInMegabytes = ReadDouble(Item, "size"),
             .FileUrl = Url,
-            .ModifyDate = ReadBoundedString(Item, "modify_date", 32)
+            .ModifyDate = ReadBoundedString(Item, "modify_date", 48)
         }
     End Function
 
@@ -125,8 +143,23 @@ Public Module SduModpackService
         Return Extension = "zip" OrElse Extension = "mrpack"
     End Function
 
-    Private Function RequestJson(Url As String) As String
-        Dim Response = NetRequestByClientRetry(Url, RequireJson:=True)
+    Private Function RequestJson(Url As String, Token As System.Threading.CancellationToken, FastCheck As Boolean) As String
+        Dim Response As String
+        If FastCheck Then
+            Using Client As New System.Net.Http.HttpClient(New System.Net.Http.HttpClientHandler With {.AllowAutoRedirect = False})
+                Client.Timeout = TimeSpan.FromSeconds(6)
+                Client.MaxResponseContentBufferSize = MaxResponseLength
+                Using Request As New System.Net.Http.HttpRequestMessage(System.Net.Http.HttpMethod.Get, Url)
+                    Request.Headers.CacheControl = New System.Net.Http.Headers.CacheControlHeaderValue With {.NoCache = True}
+                    Using Result = Client.SendAsync(Request, Token).GetAwaiter().GetResult()
+                        Result.EnsureSuccessStatusCode()
+                        Response = Result.Content.ReadAsStringAsync().GetAwaiter().GetResult()
+                    End Using
+                End Using
+            End Using
+        Else
+            Response = NetRequestByClientRetry(Url, RequireJson:=True)
+        End If
         If Response.Length > MaxResponseLength Then
             Throw New InvalidOperationException($"SDUcraft API 响应超过安全上限：{Response.Length} 字符")
         End If

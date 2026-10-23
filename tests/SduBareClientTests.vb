@@ -27,7 +27,7 @@ Module SduBareClientTests
             Run("version-specific configuration wins in either ZIP order", AddressOf ConfigurationPriority)
             Run("missing isolation settings prevent publication", AddressOf IsolationRequired)
             Run("Windows instance names are sanitized", AddressOf SafeNames)
-            Run("updates synchronize only mods and keep a full backup", AddressOf ModsOnlyUpdate)
+            Run("updates merge only mods and keep a full backup", AddressOf ModsOnlyUpdate)
             Run("failed or canceled updates keep original mods", AddressOf FailedUpdate)
             Run("updates cannot clear mods from a package without mods", AddressOf EmptyUpdate)
             Run("project identity survives website version changes", AddressOf StableIdentity)
@@ -41,11 +41,74 @@ Module SduBareClientTests
             Run("long-path cancellation removes only owned staging", AddressOf LongPathCancellation)
             Run("long-path cache conflicts preserve existing bytes", AddressOf LongPathConflict)
             Run("long-path mods updates retain complete backups", AddressOf LongPathModsUpdate)
+            Run("renamed Fabric, Forge, NeoForge, Quilt and legacy mods replace by ID", AddressOf ReplaceByModId)
+            Run("duplicate incoming IDs preserve the original mods", AddressOf DuplicateModIds)
+            Run("disabled mods remain disabled after version replacement", AddressOf DisabledModUpdate)
             Console.WriteLine("PASS: " & Passed & " bare-client filesystem scenarios (production installer, real temporary ZIP/files).")
         Catch ErrorValue As Exception
             Console.Error.WriteLine(ErrorValue.ToString())
             Environment.ExitCode = 1
         End Try
+    End Sub
+
+    Private Sub MakeMod(FileName As String, Marker As String, Content As String)
+        Directory.CreateDirectory(Path.GetDirectoryName(FileName))
+        Using Output = File.Create(FileName), Archive As New ZipArchive(Output, ZipArchiveMode.Create)
+            AddEntry(Archive, Marker, Content)
+            AddEntry(Archive, "payload.txt", FileName)
+        End Using
+    End Sub
+
+    Private Sub ReplaceByModId()
+        Dim Descriptors As New Dictionary(Of String, String) From {
+            {"fabric.mod.json", "{""id"":""example""}"},
+            {"quilt.mod.json", "{""quilt_loader"":{""id"":""example""}}"},
+            {"META-INF/mods.toml", "[[mods]]" & vbLf & "modId=""example""" & vbLf & "[[dependencies.example]]" & vbLf & "modId=""unrelated"""},
+            {"META-INF/neoforge.mods.toml", "[[mods]]" & vbLf & "modId='example'"},
+            {"mcmod.info", "[{""modid"":""example""}]"}}
+        For Each Descriptor In Descriptors
+            Using F As New Fixture()
+                Put(Path.Combine(F.Target, "Website Instance.json"), "original json")
+                Put(Path.Combine(F.Target, "options.txt"), "user keys")
+                Put(Path.Combine(F.Target, "config/user.cfg"), "user settings")
+                Dim OldMod = Path.Combine(F.Target, "mods/old-name-1.jar")
+                MakeMod(OldMod, Descriptor.Key, Descriptor.Value)
+                MakeMod(Path.Combine(F.Target, "mods/local.jar"), "fabric.mod.json", "{""id"":""local""}")
+                Dim Prepared = Path.Combine(F.Root, "incoming")
+                MakeMod(Path.Combine(Prepared, "new-name-2.jar"), Descriptor.Key, Descriptor.Value)
+                Dim Result = SduModMerge.Apply(F.Mc, F.Target, Prepared, CancellationToken.None)
+                Check(Not File.Exists(OldMod), "Old version still active for " & Descriptor.Key)
+                Check(File.Exists(Path.Combine(F.Target, "mods/new-name-2.jar")), "New version missing")
+                Check(File.Exists(Path.Combine(F.Target, "mods/local.jar")), "Local-only mod was removed")
+                Check(File.Exists(Path.Combine(Result.ModsBackup, "old-name-1.jar")), "Replaced JAR backup missing")
+                EqualFile(Path.Combine(F.Target, "options.txt"), "user keys")
+                EqualFile(Path.Combine(F.Target, "config/user.cfg"), "user settings")
+            End Using
+        Next
+    End Sub
+
+    Private Sub DuplicateModIds()
+        Using F As New Fixture()
+            Put(Path.Combine(F.Target, "Website Instance.json"), "original json")
+            Put(Path.Combine(F.Target, "mods/original.jar"), "keep original")
+            Dim Prepared = Path.Combine(F.Root, "incoming")
+            MakeMod(Path.Combine(Prepared, "a.jar"), "fabric.mod.json", "{""id"":""duplicate""}")
+            MakeMod(Path.Combine(Prepared, "b.jar"), "fabric.mod.json", "{""id"":""duplicate""}")
+            Expect(Of InvalidDataException)(Sub() SduModMerge.Apply(F.Mc, F.Target, Prepared, CancellationToken.None))
+            EqualFile(Path.Combine(F.Target, "mods/original.jar"), "keep original")
+        End Using
+    End Sub
+
+    Private Sub DisabledModUpdate()
+        Using F As New Fixture()
+            Put(Path.Combine(F.Target, "Website Instance.json"), "original json")
+            MakeMod(Path.Combine(F.Target, "mods/old.jar.disabled"), "fabric.mod.json", "{""id"":""disabled""}")
+            Dim Prepared = Path.Combine(F.Root, "incoming")
+            MakeMod(Path.Combine(Prepared, "new.jar"), "fabric.mod.json", "{""id"":""disabled""}")
+            SduModMerge.Apply(F.Mc, F.Target, Prepared, CancellationToken.None)
+            Check(File.Exists(Path.Combine(F.Target, "mods/new.jar.disabled")), "Disabled mod became enabled")
+            Check(Not File.Exists(Path.Combine(F.Target, "mods/new.jar")), "Disabled mod has an active duplicate")
+        End Using
     End Sub
 
     Private Sub ArchiveMarkers()
@@ -443,7 +506,7 @@ Module SduBareClientTests
             Check(F.Result.UpdatedMods AndAlso Directory.Exists(F.Result.ModsBackup), "Update backup missing")
             EqualFile(Path.Combine(F.Target, "mods", "current.jar"), "new version")
             EqualFile(Path.Combine(F.Target, "mods", "new.jar"), "new mod")
-            Check(Not File.Exists(Path.Combine(F.Target, "mods", "removed.jar")), "Removed package mod survived synchronization")
+            EqualFile(Path.Combine(F.Target, "mods", "removed.jar"), "removed mod")
             EqualFile(Path.Combine(F.Result.ModsBackup, "current.jar"), "old version")
             EqualFile(Path.Combine(F.Result.ModsBackup, "removed.jar"), "removed mod")
             Check(Not Directory.Exists(Path.Combine(F.Mc, "libraries")), "Mod update wrote shared dependencies")
@@ -476,7 +539,7 @@ Module SduBareClientTests
         Using F As New Fixture()
             Put(Path.Combine(F.Target, "Website Instance.json"), "original json")
             Put(Path.Combine(F.Target, "mods", "old.jar"), "original mod")
-            Expect(Of InvalidDataException)(Sub() F.Install())
+            F.Install()
             EqualFile(Path.Combine(F.Target, "mods", "old.jar"), "original mod")
         End Using
     End Sub

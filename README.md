@@ -28,7 +28,7 @@
 | 启动页下载速览 | 无 | 新增 SDUcraft 下载速览面板（含未读标记、分页加载） |
 | 内置整合包下载页 | 无 | 下载页默认打开顶部「SDUcraft 整合包」，使用整合包方块图标；移除原版游戏和公共整合包入口，可搜索服务器官网项目并下载 |
 | 整合包安装衔接 | 无 | 下载结果交给 PCL 现有安装器（含启动器包、`mrpack` 重打包适配） |
-| 自动更新 | 开源分支已移除更新通知 | 保持禁用，检查更新仅提示本版本不含更新功能 |
+| 自动更新 | 开源分支已移除更新通知 | 启动器通过 GitHub Release 自动更新，优先镜像；启动游戏前按官网时间检查整合包更新 |
 | 启动网络检查 | 无 SDUcraft 专项检查 | 后台请求官网，连接失败重试后提示连接校园网 |
 | 登录方式 | 微软正版、离线及第三方登录 | 仅保留 SDUcraft 皮肤站账号登录，旧实例认证设置自动统一 |
 | 帮助与功能入口 | 通用帮助、百宝箱、反馈、投票及版本修改 | 帮助页仅保留官网入口；移除内置指南、百宝箱、反馈、投票和版本修改页面入口 |
@@ -40,10 +40,12 @@
 
 ```text
 Modules\Sdu\SduDownloadItem.vb          下载项数据模型、JSON 解析、HTML 转纯文本
-Modules\Sdu\SduDownloadReadStore.vb     已读状态持久化
+Modules\Sdu\SduPackRecord.vb            官网项目身份与已安装包的远端时间
+Modules\Sdu\SduPackUpdate.vb            启动前检查更新、安装与启动互斥
+Modules\Sdu\SduModMerge.vb              各格式通用的模组 ID 合并与完整备份
 Modules\Sdu\SduModpackService.vb        整合包 / 下载文件 API 的类型化访问、HTTPS 白名单过滤
-Modules\Sdu\SduModpackAdapter.vb        下载后适配：提取内层 mrpack、裸客户端重打包
-Modules\Sdu\SduBareClientInstaller.vb  裸客户端隔离安装、仅同步 mods、备份与失败恢复
+Modules\Sdu\SduModpackAdapter.vb        下载后识别包格式、首次安装及更新分发
+Modules\Sdu\SduBareClientInstaller.vb  裸客户端隔离安装、mods 更新与失败恢复
 Pages\PageLaunch\PageLaunchRight.SduDownloadPanel.vb   面板 UI 与交互
 Pages\PageDownload\PageDownloadSdu.vb   内置整合包下载页
 ```
@@ -52,20 +54,23 @@ Pages\PageDownload\PageDownloadSdu.vb   内置整合包下载页
 
 更多细节见 [`MODIFICATIONS.md`](MODIFICATIONS.md) 与 [`docs/patches/`](docs/patches)。
 
-### 裸客户端安装与更新
+### 整合包安装与更新
 
-- 首次安装先在游戏目录内暂存、校验，再移动为 `versions/<网站实例名>`。主 JSON、主 JAR、原生库目录及 JSON 的自身 `jar` 引用随实例名统一。
-- 根级 `mods/config/saves/resourcepacks/shaderpacks/options.txt` 等游戏内容写入实例目录并开启版本隔离；只有根级 `libraries/assets` 使用公共缓存。已有公共缓存内容不同时停止安装，不覆盖原文件。
-- 目标实例已存在时，仅将 `mods` 与新版包同步。新版包没有的旧模组从当前 `mods` 移出，配置、存档、截图、资源包、游戏 JSON/JAR、PCL 设置和公共依赖均保持原样。没有任何 `mods` 文件的包不会清空已有模组。
+- 裸客户端首次安装先在游戏目录内暂存、校验，再移动为 `versions/<网站实例名>`。主 JSON、主 JAR、原生库目录及 JSON 的自身 `jar` 引用随实例名统一。
+- 裸客户端根级 `mods/config/saves/resourcepacks/shaderpacks/options.txt` 等游戏内容写入实例目录并开启版本隔离；只有根级 `libraries/assets` 使用公共缓存。已有公共缓存内容不同时停止安装，不覆盖原文件。
+- 首次安装使用整合包内的 `config`、`options.txt`（模组设置和快捷键）。目标实例已存在时只合并 `mods`：按 Fabric、Forge、NeoForge、Quilt 或旧版模组描述中的 ID 替换旧 JAR，不依赖文件名；加入新模组，保留包内未提供的本地模组和已禁用状态。无法识别 ID 的文件按相对路径覆盖，不猜测并删除其他文件。配置、快捷键、存档、截图、资源包、游戏 JSON/JAR、PCL 设置和公共依赖均保持原样。
 - 更新前旧 `mods` 整体备份至 `<Minecraft目录>/PCL/SduModBackups/<实例名>/<UTC时间>-<唯一编号>/mods`。切换失败时尝试恢复；恢复被权限或占用阻止时，保留备份并在异常中给出路径。取消或解包失败只清理本次暂存目录。
 - 首次安装记录官网项目 ID，官网标题或版本号改变后仍定位原实例。旧版未带 `PCL/SduPack.json` 标记的实例只按完整实例名匹配，不猜测或迁移其他目录。
-- 多版本裸客户端包无法唯一确定安装目标时转为手动处理。此处的“仅更新 mods”针对裸客户端包；标准 `mrpack/CurseForge/MCBBS/HMCL/MMC` 仍由官方安装器处理首次安装，已有同名实例时停止，避免官方安装流程覆盖其配置或游戏文件。
+- 多版本裸客户端包无法唯一确定安装目标时转为手动处理。`mrpack/Modrinth/CurseForge/MCBBS/HMCL/MultiMC` 和内嵌整合包的 ZIP 均支持相同的更新规则；更新时只在临时目录准备包内容，不重新安装 Minecraft 或加载器。手动导入也能更新同名实例。
+- 从官网安装的所有格式都会记录 `PCL/SduPack.json`。启动游戏前比较官网项目与 Windows 文件的最新时间；有更新时可选择“更新并启动”“暂不更新”或“取消启动”。网络失败不会阻止使用本地实例。纯本地导入且没有官网项目标记的实例不能自动查询官网版本，仍可手动导入新版更新。
+- 首页与下载页的“新”标记按最近 7 天判断，不再与是否点击过关联；近期内容置顶，再按时间倒序排列。名称显示自动隐藏 `.zip/.mrpack` 等压缩包后缀。
 
 回归测试使用临时 ZIP 和临时游戏目录，不操作真实游戏数据：
 
 ```powershell
 .\tests\Run-SduBareClientTests.ps1
 .\tests\Run-SduLoaderBridgeTests.ps1
+.\tests\Run-SduPackFormatTests.ps1 -Executable 'Plain Craft Launcher 2\bin\Plain Craft Launcher 2.exe'
 ```
 
 ## 构建

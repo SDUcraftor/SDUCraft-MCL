@@ -6,6 +6,35 @@ Partial Public Class PageLaunchRight
     Public PanCustom As New StackPanel()
 
     Public Shared Sub RunPanelTests()
+        Dim Now = DateTimeOffset.UtcNow
+        Check(SduDownloadItem.IsRecent(Now.AddDays(-7), Now), "Exactly seven days should still be new")
+        Check(Not SduDownloadItem.IsRecent(Now.AddDays(-7).AddTicks(-1), Now), "Expired item is still new")
+        Check(Not SduDownloadItem.IsRecent(Now.AddSeconds(1), Now), "Future date was marked new")
+        Check(Not SduDownloadItem.IsRecent(Nothing, Now), "Missing date was marked new")
+        Check(SduDownloadItem.NewestTime("2026-10-23 08:00:00") = SduDownloadItem.NewestTime("2026-10-23T00:00:00Z"), "Website dates do not use China time")
+        Dim Json = New Newtonsoft.Json.Linq.JArray From {
+            New Newtonsoft.Json.Linq.JObject From {{"id", "old"}, {"publish_date", Now.AddDays(-20).ToString("O")}},
+            New Newtonsoft.Json.Linq.JObject From {{"id", "future"}, {"publish_date", Now.AddDays(2).ToString("O")}},
+            New Newtonsoft.Json.Linq.JObject From {{"id", "new"}, {"modify_date", Now.AddDays(-1).ToString("O")}}}
+        Check(SduDownloadItem.ParseList(Json.ToString())(0).Id = "new", "Recent content is not pinned above other dates")
+        Console.WriteLine("PASS: seven-day badge boundary, future/missing dates, China time and recent-first ordering")
+
+        For Each Suffix In {".zip", ".ZIP", ".mrpack", ".7z", ".rar", ".tar.gz"}
+            Dim Item As New SduDownloadItem With {.Name = "SDUcraft_4THclient" & Suffix & " "}
+            Check(Item.DisplayName = "SDUcraft_4THclient", "Archive suffix remains in display name: " & Suffix)
+            Check(Item.Name.EndsWith(Suffix & " "), "Display formatting changed the original install name")
+        Next
+        For Each Name In {"Pack 1.21.7", "Pack.zip notes", ".zip", "普通整合包"}
+            Check(SduDownloadItem.FormatDisplayName(Name) = Name, "Formatting removed meaningful name content: " & Name)
+        Next
+        Dim NamedPage As New PageLaunchRight()
+        NamedPage._SduDownloadItems = New List(Of SduDownloadItem) From {
+            New SduDownloadItem With {.Id = "archive", .Name = "SDUcraft_4THclient.zip"}}
+        NamedPage.RenderSduDownloadPanel()
+        Check(Automation.AutomationProperties.GetName(NamedPage._SduDownloadStack.Children(0)) = "下载并安装 SDUcraft_4THclient",
+              "Production panel still announces the archive suffix")
+        Console.WriteLine("PASS: archive suffixes hidden while original names and version numbers are preserved")
+
         Dim Page As New PageLaunchRight()
         Page._SduDownloadItems = Enumerable.Range(1, 29).Select(Function(Index) New SduDownloadItem With {
             .Id = Index.ToString(), .Name = "Pack " & Index, .Version = "1.21.1", .IntroHtml = "Offline regression fixture"}).ToList()

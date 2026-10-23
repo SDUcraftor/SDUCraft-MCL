@@ -138,11 +138,12 @@ Public Class PageDownloadSdu
         If SduDownloadLoading OrElse SduDownloadItems Is Nothing Then Return
 
         Dim Keyword = TextFilter.Text.Trim()
-        Dim Available = SduDownloadItems.Where(Function(Item) Item.PreferredFile IsNot Nothing).ToList()
+        Dim Available = SduDownloadItems.Where(Function(Item) Item.PreferredFile IsNot Nothing).
+            OrderByDescending(Function(Item) Item.IsNew).ThenByDescending(Function(Item) Item.LatestTime).ToList()
         Dim Matched = Available.Where(
             Function(Item)
                 If Keyword = "" Then Return True
-                Return Item.Name.IndexOf(Keyword, StringComparison.OrdinalIgnoreCase) >= 0 OrElse
+                Return Item.DisplayName.IndexOf(Keyword, StringComparison.OrdinalIgnoreCase) >= 0 OrElse
                        Item.Version.IndexOf(Keyword, StringComparison.OrdinalIgnoreCase) >= 0 OrElse
                        Item.Author.IndexOf(Keyword, StringComparison.OrdinalIgnoreCase) >= 0
             End Function).ToList()
@@ -172,16 +173,25 @@ Public Class PageDownloadSdu
         Dim Heading As New Grid()
         Heading.ColumnDefinitions.Add(New ColumnDefinition With {.Width = New GridLength(1, GridUnitType.Star)})
         Heading.ColumnDefinitions.Add(New ColumnDefinition With {.Width = GridLength.Auto})
+        Heading.ColumnDefinitions.Add(New ColumnDefinition With {.Width = GridLength.Auto})
         Dim Title As New TextBlock With {
-            .Text = Item.Name, .FontSize = 13.5, .FontWeight = FontWeights.SemiBold,
+            .Text = Item.DisplayName, .FontSize = 13.5, .FontWeight = FontWeights.SemiBold,
             .TextTrimming = TextTrimming.CharacterEllipsis, .Margin = New Thickness(0, 0, 12, 0),
             .VerticalAlignment = VerticalAlignment.Center
         }
         Title.SetResourceReference(TextBlock.ForegroundProperty, "ColorBrush1")
         Dim Download As New TextBlock With {.Text = "下载 ↓", .FontSize = 11, .VerticalAlignment = VerticalAlignment.Center}
         Download.SetResourceReference(TextBlock.ForegroundProperty, "ColorBrush3")
-        Grid.SetColumn(Download, 1)
+        Grid.SetColumn(Download, 2)
         Heading.Children.Add(Title)
+        If Item.IsNew Then
+            Dim Badge As New Border With {
+                .CornerRadius = New CornerRadius(3), .Background = New SolidColorBrush(Color.FromRgb(236, 76, 86)),
+                .Padding = New Thickness(5, 0, 5, 1), .Margin = New Thickness(0, 0, 10, 0), .VerticalAlignment = VerticalAlignment.Center,
+                .Child = New TextBlock With {.Text = "新", .FontSize = 10, .Foreground = Brushes.White}}
+            Grid.SetColumn(Badge, 1)
+            Heading.Children.Add(Badge)
+        End If
         Heading.Children.Add(Download)
         Content.Children.Add(Heading)
 
@@ -211,7 +221,7 @@ Public Class PageDownloadSdu
                 Dim Prefix = Summary.Groups("title").Value
                 If Prefix.IndexOf("Minecraft", StringComparison.OrdinalIgnoreCase) >= 0 OrElse
                    Prefix.IndexOf("SDUcraft", StringComparison.OrdinalIgnoreCase) >= 0 OrElse
-                   (Item.Name <> "" AndAlso Prefix.Contains(Item.Name)) Then Intro = Intro.Substring(Summary.Length)
+                   (Item.DisplayName <> "" AndAlso Prefix.Contains(Item.DisplayName)) Then Intro = Intro.Substring(Summary.Length)
             End If
             Dim Description As New TextBlock With {.Text = Intro, .FontSize = 11.5, .Margin = New Thickness(0, 3, 0, 0), .TextTrimming = TextTrimming.CharacterEllipsis}
             Description.SetResourceReference(TextBlock.ForegroundProperty, "ColorBrushGray2")
@@ -223,9 +233,9 @@ Public Class PageDownloadSdu
             .BorderThickness = New Thickness(1), .Margin = New Thickness(0, 0, 0, 8),
             .HorizontalContentAlignment = HorizontalAlignment.Stretch, .Cursor = Cursors.Hand
         }
-        Automation.AutomationProperties.SetName(Card, $"下载并安装 {Item.Name}")
+        Automation.AutomationProperties.SetName(Card, $"下载并安装 {Item.DisplayName}")
         Card.ToolTip = New ToolTip With {.MaxWidth = 380, .Content = New TextBlock With {
-            .Text = Item.Name & If(Item.Author = "", "", vbCrLf & "作者：" & Item.Author) & If(Item.IntroHtml = "", "", vbCrLf & RemoveSduHtml(Item.IntroHtml)),
+            .Text = Item.DisplayName & If(Item.Author = "", "", vbCrLf & "作者：" & Item.Author) & If(Item.IntroHtml = "", "", vbCrLf & RemoveSduHtml(Item.IntroHtml)),
             .MaxHeight = 200, .TextWrapping = TextWrapping.Wrap}}
         Card.Style = CreateSduItemStyle()
         AddHandler Card.Click, AddressOf SduItemClick

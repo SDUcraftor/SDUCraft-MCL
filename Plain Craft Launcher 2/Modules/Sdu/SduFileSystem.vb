@@ -36,6 +36,9 @@ Friend NotInheritable Class SduFileSystem
         Friend Shared Sub Move(Source As String, Destination As String)
             IO.File.Move(ToIoPath(Source), ToIoPath(Destination))
         End Sub
+        Friend Shared Sub Delete(Name As String)
+            IO.File.Delete(ToIoPath(Name))
+        End Sub
         Friend Shared Function OpenRead(Name As String) As FileStream
             Return IO.File.OpenRead(ToIoPath(Name))
         End Function
@@ -53,6 +56,9 @@ Friend NotInheritable Class SduFileSystem
         End Sub
         Friend Shared Function GetDirectories(Name As String) As String()
             Return IO.Directory.GetDirectories(ToIoPath(Name)).Select(Function(Child) ToDisplayPath(Child)).ToArray()
+        End Function
+        Friend Shared Function GetFiles(Name As String) As String()
+            Return IO.Directory.GetFiles(ToIoPath(Name)).Select(Function(Child) ToDisplayPath(Child)).ToArray()
         End Function
         Friend Shared Sub Move(Source As String, Destination As String)
             IO.Directory.Move(ToIoPath(Source), ToIoPath(Destination))

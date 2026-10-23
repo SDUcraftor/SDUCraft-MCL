@@ -9,7 +9,8 @@ Public Module SduModpackInstaller
     ''' 启动整合包下载并安装，并等待整个流程结束。必须在工作线程中调用。
     ''' 下载与安装进度显示在任务栏加载器中，失败和取消会抛回调用方。
     ''' </summary>
-    Public Sub StartInstall(Item As SduGameDownload)
+    Public Sub StartInstall(Item As SduGameDownload, Optional TargetMcFolder As String = Nothing, Optional TargetInstanceName As String = Nothing,
+                            Optional Token As System.Threading.CancellationToken = Nothing, Optional FromLaunch As Boolean = False)
         Dim DownloadFile As SduGameDownloadFile = Item.PreferredFile
         If DownloadFile Is Nothing Then
             Throw New Exception("该整合包没有可用的 Windows 下载文件，无法安装。")
@@ -18,8 +19,8 @@ Public Module SduModpackInstaller
         'GameId 只保留文件名安全字符（API 返回的 id 含冒号时会导致写盘失败或异常路径）
         Dim GameId As String = System.Text.RegularExpressions.Regex.Replace(If(Item.Id, ""), "[^A-Za-z0-9_.-]", "_")
         If GameId = "" Then GameId = GetUuid().ToString("N")
-        Dim McFolder As String = PathUtils.AddSlashSuffix(McFolderSelected)
-        Dim InstanceName As String = SduBareClientInstaller.ResolveInstanceName(McFolder, Item.Id, CreateSduInstanceName(Item))
+        Dim McFolder As String = PathUtils.AddSlashSuffix(If(TargetMcFolder, McFolderSelected))
+        Dim InstanceName As String = If(TargetInstanceName, SduBareClientInstaller.ResolveInstanceName(McFolder, Item.Id, CreateSduInstanceName(Item)))
 
         ' 下载文件（mrpack 或 zip，按 URL 后缀取名，适配器会按内容识别）
         Dim Extension As String = If(DownloadFile.FileUrl.EndsWithF(".mrpack", True), "mrpack", "zip")
@@ -45,7 +46,7 @@ Public Module SduModpackInstaller
         ' 步骤 2：检测包结构并安装（适配器按结构分派，进度由 Task 反馈）
         Loaders.Add(New LoaderTask(Of Integer, Integer)("安装整合包",
         Sub(Task)
-            SduModpackAdapter.AdaptAndInstall(LocalFile, Item, Task, InstanceName, McFolder)
+            SduModpackAdapter.AdaptAndInstall(LocalFile, Item, Task, InstanceName, McFolder, FromLaunch)
         End Sub) With {.ProgressWeight = 10})
 
         ' 启动加载器，显示进度到任务栏
@@ -59,11 +60,11 @@ Public Module SduModpackInstaller
             LoaderTaskbarAdd(Loader)
             FrmMain.BtnExtraDownload.ShowRefresh()
         End Sub)
-        RunInUi(Sub() FrmMain.PageChange(FormMain.PageType.TaskManager))
+        If Not FromLaunch Then RunInUi(Sub() FrmMain.PageChange(FormMain.PageType.TaskManager))
 
         '不能在任务刚加入列表后返回，否则两个入口会过早释放“安装中”状态。
         Try
-            SduLoaderBridge.WaitForCompletion(Loader)
+            SduLoaderBridge.WaitForCompletion(Loader, ExternalToken:=Token)
             Hint(LoaderName & "成功！", HintType.Green)
         Catch ex As Exception
             If ex.IsCanceled Then
