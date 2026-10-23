@@ -15,7 +15,9 @@ Public Module SduModpackInstaller
             Throw New Exception("该整合包没有可用的 Windows 下载文件，无法安装。")
         End If
 
-        Dim GameId As String = If(Item.Id = "", GetUuid().ToString("N"), Item.Id)
+        'GameId 只保留文件名安全字符（API 返回的 id 含冒号时会导致写盘失败或异常路径）
+        Dim GameId As String = System.Text.RegularExpressions.Regex.Replace(If(Item.Id, ""), "[^A-Za-z0-9_.-]", "_")
+        If GameId = "" Then GameId = GetUuid().ToString("N")
         Dim McFolder As String = PathUtils.AddSlashSuffix(McFolderSelected)
         Dim InstanceName As String = SduBareClientInstaller.ResolveInstanceName(McFolder, Item.Id, CreateSduInstanceName(Item))
 

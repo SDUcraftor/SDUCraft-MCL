@@ -118,7 +118,8 @@ Public Module SduModpackService
         If Url.Scheme <> Uri.UriSchemeHttps Then Return False
         If Not String.Equals(Url.Host, AllowedHost, StringComparison.OrdinalIgnoreCase) Then Return False
         If Not String.IsNullOrEmpty(Url.UserInfo) OrElse Not String.IsNullOrEmpty(Url.Fragment) Then Return False
-        If Not Url.AbsolutePath.StartsWithF("/FileSetForDownload/", False) Then Return False
+        '不区分大小写，避免服务端路径大小写变动导致合法下载项被误拦截
+        If Not Url.AbsolutePath.StartsWithF("/FileSetForDownload/", True) Then Return False
 
         Dim Extension = PathUtils.GetExtension(Url.AbsolutePath).Lower()
         Return Extension = "zip" OrElse Extension = "mrpack"

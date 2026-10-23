@@ -106,6 +106,10 @@ Friend Module SduBareClientInstaller
             Dim CacheStage = Path.Combine(Staging, "cache")
             Directory.CreateDirectory(VersionStage)
             Dim Total As Long = Plan.Sum(Function(File) File.Entry.Length)
+            '解压炸弹防护：解压后总量超过上限时拒绝安装
+            If Total > 20L * 1024 * 1024 * 1024 Then
+                Throw New InvalidDataException("整合包解压后体积超过 20GB 上限，文件可能异常，请手动安装。")
+            End If
             Dim Done As Long = 0
             For Each File In Plan
                 Token.ThrowIfCancellationRequested()
@@ -197,6 +201,10 @@ Friend Module SduBareClientInstaller
             Try
                 Directory.CreateDirectory(ModsStage)
                 Dim Total As Long = Mods.Sum(Function(File) File.Entry.Length)
+                '解压炸弹防护：mods 更新总量超过上限时拒绝
+                If Total > 5L * 1024 * 1024 * 1024 Then
+                    Throw New InvalidDataException("整合包 mods 体积超过 5GB 上限，文件可能异常，请手动安装。")
+                End If
                 Dim Done As Long = 0
                 For Each File In Mods
                     Token.ThrowIfCancellationRequested()
