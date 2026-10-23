@@ -115,3 +115,14 @@ Check ($recordType.GetMethod('HasUpdate',$flags).Invoke($null,@($legacy,$item)))
 $item.ModifyDate = 'invalid'; $item.PublishDate = ''; $file.ModifyDate = ''
 Check (-not $recordType.GetMethod('HasUpdate',$flags).Invoke($null,@($legacy,$item))) 'Invalid remote timestamp triggers update'
 Write-Output 'PASS compiled update records: persisted times, timezone equality, file update, no downgrade or cross-project update'
+$confirm = $assembly.GetType('PCL.SduModpackInstaller',$true).GetMethod('ConfirmUpdate',$flags)
+$script:askCount = 0
+$cancel = [Func[string,int]]{ param($message) $script:askCount++; return 2 }
+Check ($confirm.Invoke($null,@([string]$mc,'not-installed',$cancel))) 'Fresh installation unexpectedly requires update confirmation'
+Check ($script:askCount -eq 0) 'Fresh installation showed update confirmation'
+Check (-not $confirm.Invoke($null,@([string]$mc,[string]$name,$cancel))) 'Cancel was treated as update approval'
+Check ($script:askCount -eq 1) 'Existing pack did not ask for update confirmation'
+$approve = [Func[string,int]]{ param($message) $script:askCount++; return 1 }
+Check ($confirm.Invoke($null,@([string]$mc,[string]$name,$approve))) 'Confirmed update was rejected'
+Check ([IO.File]::ReadAllText((Join-Path $target 'config/user.cfg')) -eq 'user config') 'Confirmation touched existing config'
+Write-Output 'PASS compiled existing-instance confirmation: fresh install skips prompt, cancel stops, approval continues, existing data unchanged'

@@ -22,17 +22,21 @@ Public Module SduModpackInstaller
         Dim McFolder As String = PathUtils.AddSlashSuffix(If(TargetMcFolder, McFolderSelected))
         Dim InstanceName As String = If(TargetInstanceName, SduBareClientInstaller.ResolveInstanceName(McFolder, Item.Id, CreateSduInstanceName(Item)))
 
-        ' 下载文件（mrpack 或 zip，按 URL 后缀取名，适配器会按内容识别）
-        Dim Extension As String = If(DownloadFile.FileUrl.EndsWithF(".mrpack", True), "mrpack", "zip")
-        Dim TempFolder As String = RequestTaskTempFolder()
-        Dim LocalFile As String = $"{TempFolder}SDUcraft-{GameId}.{Extension}"
-
         Dim LoaderName As String = $"SDUcraft 整合包安装：{InstanceName} "
 
         If LoaderTaskbar.Any(Function(l) l.Name = LoaderName) Then
             Hint("该整合包正在安装中！", HintType.Red)
             Return
         End If
+
+        '启动前检查已经询问过“更新并启动”；下载页、首页及手动导入则先确认已有实例。
+        If Not FromLaunch AndAlso Not ConfirmUpdate(McFolder, InstanceName) Then Return
+        Token.ThrowIfCancellationRequested()
+
+        '确认后才创建临时目录和下载任务。
+        Dim Extension As String = If(DownloadFile.FileUrl.EndsWithF(".mrpack", True), "mrpack", "zip")
+        Dim TempFolder As String = RequestTaskTempFolder()
+        Dim LocalFile As String = $"{TempFolder}SDUcraft-{GameId}.{Extension}"
 
         ' 构建步骤加载器（显示进度）
         Dim Loaders As New List(Of LoaderBase)
@@ -84,6 +88,19 @@ Public Module SduModpackInstaller
             Throw New SduInstallReportedException(ex)
         End Try
     End Sub
+
+    Friend Function ConfirmUpdate(McFolder As String, InstanceName As String, Optional Ask As Func(Of String, Integer) = Nothing) As Boolean
+        Dim Target = System.IO.Path.Combine(McFolder, "versions", InstanceName)
+        If Not SduFileSystem.Directory.Exists(Target) Then Return True
+        If Not SduFileSystem.File.Exists(System.IO.Path.Combine(Target, InstanceName & ".json")) Then
+            Throw New System.IO.IOException("同名目录不是有效的 Minecraft 实例，已保留原目录：" & Target)
+        End If
+        Dim Message = $"本地已安装整合包：{InstanceName}" & vbCrLf & vbCrLf &
+                      "是否更新这个实例的模组？" & vbCrLf &
+                      "已有且包内也有的模组会替换，没有的会加入；本地独有模组不会移除。" & vbCrLf &
+                      "模组配置、快捷键和存档保持原样，更新前会备份旧 mods。"
+        Return If(Ask Is Nothing, MyMsgBox(Message, "发现已安装的整合包", "更新模组", "取消"), Ask(Message)) = 1
+    End Function
 
     ''' <summary>
     ''' 把已下载的整合包复制到 PCL 目录下 SduDownload 文件夹并打开资源管理器，提示用户手动安装。

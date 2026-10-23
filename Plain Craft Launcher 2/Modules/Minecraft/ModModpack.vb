@@ -175,6 +175,7 @@ Public Module ModModpack
 
     Private Function StartPackUpdate(File As String, Name As String, McFolder As String, Notify As Boolean) As LoaderCombo(Of String)
         SduBareClientInstaller.ValidateSegment(Name)
+        If Not SduModpackInstaller.ConfirmUpdate(McFolder, Name) Then Throw New OperationCanceledException("已取消整合包更新。")
         Dim Work As New LoaderTask(Of Integer, Integer)("合并整合包模组",
             Sub(Task)
                 SduModpackAdapter.AdaptAndInstall(File, New SduGameDownload With {.Name = Name}, Task, Name, McFolder)
@@ -212,6 +213,7 @@ Public Module ModModpack
         If DirectoryUtils.Exists(OverridesFolder) Then
             Logger.Info($"处理整合包覆写文件夹：{OverridesFolder} → {VersionFolder}")
             DirectoryUtils.Copy(OverridesFolder, VersionFolder)
+            SduModMerge.RecordOverrides(OverridesFolder.TrimEnd("\"c), VersionFolder.TrimEnd("\"c), Loader.CreateCancellationToken())
         Else
             Logger.Info($"整合包中没有覆写文件夹：{OverridesFolder}")
         End If
@@ -439,6 +441,7 @@ Public Module ModModpack
         End If
 
         '启动
+        Loaders.Add(New LoaderTask(Of String, Integer)("整理整合包模组", Sub(Task) SduModMerge.FinalizeFirstInstall(VersionFolder, Task.CreateCancellationToken())))
         Dim Loader As New LoaderCombo(Of String)(LoaderName, Loaders) With {.OnStateChanged = Sub(StateLoader) McInstallState(StateLoader, ShowNotifications)}
         Loader.Start(VersionFolder)
         LoaderTaskbarAdd(Loader)
@@ -569,6 +572,7 @@ Public Module ModModpack
         End If
 
         '启动
+        Loaders.Add(New LoaderTask(Of String, Integer)("整理整合包模组", Sub(Task) SduModMerge.FinalizeFirstInstall(VersionFolder, Task.CreateCancellationToken())))
         Dim Loader As New LoaderCombo(Of String)(LoaderName, Loaders) With {.OnStateChanged = Sub(StateLoader) McInstallState(StateLoader, ShowNotifications)}
         Loader.Start(VersionFolder)
         LoaderTaskbarAdd(Loader)
@@ -621,6 +625,7 @@ Public Module ModModpack
             Throw New OperationCanceledException
         End If
         '启动
+        Loaders.Add(New LoaderTask(Of String, Integer)("整理整合包模组", Sub(Task) SduModMerge.FinalizeFirstInstall(VersionFolder, Task.CreateCancellationToken())))
         Dim Loader As New LoaderCombo(Of String)(LoaderName, Loaders) With {.OnStateChanged = Sub(StateLoader) McInstallState(StateLoader, ShowNotifications)}
         Loader.Start(VersionFolder)
         LoaderTaskbarAdd(Loader)
@@ -758,6 +763,7 @@ Public Module ModModpack
         End If
 
         '启动
+        Loaders.Add(New LoaderTask(Of String, Integer)("整理整合包模组", Sub(Task) SduModMerge.FinalizeFirstInstall(VersionFolder, Task.CreateCancellationToken())))
         Dim Loader As New LoaderCombo(Of String)(LoaderName, Loaders) With {.OnStateChanged = Sub(StateLoader) McInstallState(StateLoader, ShowNotifications)}
         Loader.Start(VersionFolder)
         LoaderTaskbarAdd(Loader)
@@ -845,6 +851,7 @@ Public Module ModModpack
         End If
 
         '启动
+        Loaders.Add(New LoaderTask(Of String, Integer)("整理整合包模组", Sub(Task) SduModMerge.FinalizeFirstInstall(VersionFolder, Task.CreateCancellationToken())))
         Dim Loader As New LoaderCombo(Of String)(LoaderName, Loaders) With {.OnStateChanged = Sub(StateLoader) McInstallState(StateLoader, ShowNotifications)}
         'If Archive IsNot Nothing Then Archive.Dispose() '解除占用，以免在加载器中触发 “正由另一进程使用，因此该进程无法访问此文件”
         Loader.Start(VersionFolder)

@@ -27,19 +27,23 @@ Friend Module SduModMerge
             Token.ThrowIfCancellationRequested()
             If Incoming.Count = 0 Then Return New SduBareClientInstaller.InstallResult With {.InstanceFolder = Target & Path.DirectorySeparatorChar, .UpdatedMods = True}
             If Incoming.Sum(Function(File) SduFileSystem.File.Length(File)) > 5L * 1024 * 1024 * 1024 Then Throw New InvalidDataException("新版 mods 体积超过 5GB 上限。")
-            Dim NewIds As New Dictionary(Of String, String)(StringComparer.OrdinalIgnoreCase)
-            For Each File In Incoming
-                For Each Id In ReadModIds(File)
-                    If NewIds.ContainsKey(Id) Then Throw New InvalidDataException("新版包包含重复模组 ID：" & Id)
-                    NewIds.Add(Id, File)
-                Next
-            Next
+            Dim Plan = PlanIncoming(IncomingMods, Incoming, Token)
+            Incoming = Plan.Files
+            Dim NewIds = Plan.Ids
             Dim Replaced As New HashSet(Of String)(StringComparer.OrdinalIgnoreCase)
             Dim Disabled As New Dictionary(Of String, String)(StringComparer.OrdinalIgnoreCase)
+            Dim ActiveIds As New HashSet(Of String)(StringComparer.OrdinalIgnoreCase)
+            For Each File In Existing.Where(Function(Value) IsRootMod(Current, Value, IncludeDisabled:=False))
+                ActiveIds.UnionWith(ReadModIds(File))
+            Next
             For Each File In Existing
+                If Not IsRootMod(Current, File, IncludeDisabled:=True) Then Continue For
                 Dim OldIds = ReadModIds(File)
                 Dim Matches = OldIds.Where(Function(Id) NewIds.ContainsKey(Id)).Select(Function(Id) NewIds(Id)).Distinct().ToList()
                 If Matches.Count = 0 Then Continue For
+                Dim IsDisabled = Not File.EndsWith(".jar", StringComparison.OrdinalIgnoreCase)
+                '已有启用版本时，禁用副本只是备份，不得因此禁用新版本或移走该副本。
+                If IsDisabled AndAlso OldIds.Any(Function(Id) ActiveIds.Contains(Id)) Then Continue For
                 If OldIds.Any(Function(Id) Not NewIds.ContainsKey(Id)) Then Throw New InvalidDataException("旧 JAR 同时包含新版未提供的其他模组，已停止更新以保留这些内容：" & Path.GetFileName(File))
                 Replaced.Add(File)
                 If File.EndsWith(".disabled", StringComparison.OrdinalIgnoreCase) OrElse File.EndsWith(".disable", StringComparison.OrdinalIgnoreCase) Then
@@ -81,6 +85,92 @@ Friend Module SduModMerge
             End Try
         End SyncLock
     End Function
+
+    Private Const OverridesRecord As String = ".sdu-mod-overrides.json"
+
+    ''' <summary>记录包内 overrides 的实际来源；不能用下载完成时间或文件名猜测优先级。</summary>
+    Friend Sub RecordOverrides(SourceFolder As String, InstanceFolder As String, Token As CancellationToken)
+        Dim SourceMods = Path.Combine(SourceFolder, "mods")
+        Dim Names As New HashSet(Of String)(ReadPreferredNames(InstanceFolder), StringComparer.OrdinalIgnoreCase)
+        Dim SourceFiles = EnumerateSafe(SourceMods, Token)
+        Dim SourceIds As New HashSet(Of String)(StringComparer.OrdinalIgnoreCase)
+        For Each File In SourceFiles.Where(Function(Value) IsRootMod(SourceMods, Value, IncludeDisabled:=False))
+            SourceIds.UnionWith(ReadModIds(File))
+        Next
+        '后复制的 client-overrides 比普通 overrides 优先，文件名变化也按 ID 覆盖来源记录。
+        For Each Name In Names.ToList()
+            Dim Destination = SduBareClientInstaller.ChildPath(Path.Combine(InstanceFolder, "mods"), Name)
+            If SduFileSystem.File.Exists(Destination) AndAlso SourceIds.Overlaps(ReadModIds(Destination)) Then Names.Remove(Name)
+        Next
+        For Each File In SourceFiles
+            Names.Add(File.Substring(SourceMods.Length + 1).Replace("\"c, "/"c))
+        Next
+        SduFileSystem.Directory.CreateDirectory(InstanceFolder)
+        SduFileSystem.File.WriteAllText(Path.Combine(InstanceFolder, OverridesRecord), New JArray(Names).ToString(), New UTF8Encoding(False))
+    End Sub
+
+    Private Function ReadPreferredNames(Folder As String) As List(Of String)
+        Dim Record = Path.Combine(Folder, OverridesRecord)
+        If Not SduFileSystem.File.Exists(Record) Then Return New List(Of String)
+        If SduFileSystem.File.Length(Record) > 2 * 1024 * 1024 Then Throw New InvalidDataException("模组来源记录超过大小上限。")
+        Return JArray.Parse(SduFileSystem.File.ReadAllText(Record, Encoding.UTF8)).Select(Function(Value) CStr(Value)).ToList()
+    End Function
+
+    Private Class IncomingPlan
+        Friend Files As List(Of String)
+        Friend Ids As New Dictionary(Of String, String)(StringComparer.OrdinalIgnoreCase)
+        Friend Superseded As New HashSet(Of String)(StringComparer.OrdinalIgnoreCase)
+    End Class
+
+    Private Function PlanIncoming(ModsFolder As String, Files As List(Of String), Token As CancellationToken) As IncomingPlan
+        Dim Preferred As New HashSet(Of String)(StringComparer.OrdinalIgnoreCase)
+        For Each Name In ReadPreferredNames(Path.GetDirectoryName(ModsFolder.TrimEnd("\"c)))
+            Preferred.Add(SduBareClientInstaller.ChildPath(ModsFolder, Name))
+        Next
+        Dim Candidates As New Dictionary(Of String, List(Of String))(StringComparer.OrdinalIgnoreCase)
+        For Each File In Files.Where(Function(Value) IsRootMod(ModsFolder, Value, IncludeDisabled:=False))
+            Token.ThrowIfCancellationRequested()
+            For Each Id In ReadModIds(File)
+                If Not Candidates.ContainsKey(Id) Then Candidates.Add(Id, New List(Of String))
+                Candidates(Id).Add(File)
+            Next
+        Next
+        Dim Plan As New IncomingPlan
+        For Each Entry In Candidates
+            Dim Choices = Entry.Value
+            Dim Winner = Choices(0)
+            If Choices.Count > 1 Then
+                Dim PreferredChoices = Choices.Where(Function(File) Preferred.Contains(File)).ToList()
+                If PreferredChoices.Count <> 1 Then Throw New InvalidDataException("无法确定重复模组的有效版本：" & Entry.Key & "（" & String.Join("、", Choices.Select(Function(File) Path.GetFileName(File))) & "）。请检查整合包内容。")
+                Winner = PreferredChoices(0)
+                Plan.Superseded.UnionWith(Choices.Where(Function(File) Not String.Equals(File, Winner, StringComparison.OrdinalIgnoreCase)))
+            End If
+            Plan.Ids.Add(Entry.Key, Winner)
+        Next
+        If Plan.Ids.Values.Any(Function(File) Plan.Superseded.Contains(File)) Then Throw New InvalidDataException("重复 JAR 同时包含其他不可替代模组，已停止更新以保留内容。")
+        Plan.Files = Files.Where(Function(File) Not Plan.Superseded.Contains(File)).ToList()
+        Return Plan
+    End Function
+
+    Private Function IsRootMod(Root As String, File As String, IncludeDisabled As Boolean) As Boolean
+        If Not String.Equals(Path.GetDirectoryName(File), Root.TrimEnd("\"c), StringComparison.OrdinalIgnoreCase) Then Return False
+        Return File.EndsWith(".jar", StringComparison.OrdinalIgnoreCase) OrElse
+            (IncludeDisabled AndAlso (File.EndsWith(".jar.disabled", StringComparison.OrdinalIgnoreCase) OrElse File.EndsWith(".jar.disable", StringComparison.OrdinalIgnoreCase)))
+    End Function
+
+    ''' <summary>首次安装也使用 overrides 优先规则；多余的下载副本移到实例元数据中保留。</summary>
+    Friend Sub FinalizeFirstInstall(InstanceFolder As String, Token As CancellationToken)
+        Dim Mods = Path.Combine(InstanceFolder.TrimEnd("\"c), "mods")
+        Dim Plan = PlanIncoming(Mods, EnumerateSafe(Mods, Token), Token)
+        If Plan.Superseded.Count = 0 Then Return
+        Dim Backup = Path.Combine(InstanceFolder, "PCL", "SduSupersededMods", Guid.NewGuid().ToString("N"))
+        SduBareClientInstaller.RejectReparseParents(InstanceFolder, Backup)
+        SduFileSystem.Directory.CreateDirectory(Backup)
+        For Each File In Plan.Superseded
+            Token.ThrowIfCancellationRequested()
+            SduFileSystem.File.Move(File, Path.Combine(Backup, Path.GetFileName(File)))
+        Next
+    End Sub
 
     Private Sub CopyDirectorySkeleton(Root As String, Current As String, Prepared As String, Token As CancellationToken)
         If Not SduFileSystem.Directory.Exists(Current) Then Return

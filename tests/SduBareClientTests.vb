@@ -44,11 +44,73 @@ Module SduBareClientTests
             Run("renamed Fabric, Forge, NeoForge, Quilt and legacy mods replace by ID", AddressOf ReplaceByModId)
             Run("duplicate incoming IDs preserve the original mods", AddressOf DuplicateModIds)
             Run("disabled mods remain disabled after version replacement", AddressOf DisabledModUpdate)
+            Run("overrides supersede an older manifest JAR with the same ID", AddressOf OverridesWin)
+            Run("disabled copies and nested backups are not active duplicate mods", AddressOf InactiveCopies)
+            Run("first installation preserves superseded JARs outside mods", AddressOf FirstInstallOverrides)
             Console.WriteLine("PASS: " & Passed & " bare-client filesystem scenarios (production installer, real temporary ZIP/files).")
         Catch ErrorValue As Exception
             Console.Error.WriteLine(ErrorValue.ToString())
             Environment.ExitCode = 1
         End Try
+    End Sub
+
+    Private Sub OverridesWin()
+        Using F As New Fixture()
+            Put(Path.Combine(F.Target, "Website Instance.json"), "original json")
+            Put(Path.Combine(F.Target, "mods/local.jar"), "local-only content")
+            MakeMod(Path.Combine(F.Target, "mods/dynmap-old.jar"), "fabric.mod.json", "{""id"":""dynmap""}")
+            Dim Stage = Path.Combine(F.Root, "stage")
+            Dim Source = Path.Combine(F.Root, "overrides")
+            Dim Mods = Path.Combine(Stage, "mods")
+            MakeMod(Path.Combine(Source, "mods/beta-7.jar"), "fabric.mod.json", "{""id"":""dynmap""}")
+            MakeMod(Path.Combine(Mods, "beta-7.jar"), "fabric.mod.json", "{""id"":""dynmap""}")
+            MakeMod(Path.Combine(Mods, "beta-6.jar"), "fabric.mod.json", "{""id"":""dynmap""}")
+            SduModMerge.RecordOverrides(Source, Stage, CancellationToken.None)
+            Dim Result = SduModMerge.Apply(F.Mc, F.Target, Mods, CancellationToken.None)
+            Check(File.Exists(Path.Combine(F.Target, "mods/beta-7.jar")), "Override JAR was not selected")
+            Check(Not File.Exists(Path.Combine(F.Target, "mods/beta-6.jar")), "Superseded manifest JAR became active")
+            Check(Not File.Exists(Path.Combine(F.Target, "mods/dynmap-old.jar")), "Old matching mod remained active")
+            EqualFile(Path.Combine(F.Target, "mods/local.jar"), "local-only content")
+            Check(File.Exists(Path.Combine(Result.ModsBackup, "dynmap-old.jar")), "Old matching mod was not backed up")
+            Dim ClientOverrides = Path.Combine(F.Root, "client-overrides")
+            MakeMod(Path.Combine(ClientOverrides, "mods/beta-8.jar"), "fabric.mod.json", "{""id"":""dynmap""}")
+            MakeMod(Path.Combine(Mods, "beta-8.jar"), "fabric.mod.json", "{""id"":""dynmap""}")
+            SduModMerge.RecordOverrides(ClientOverrides, Stage, CancellationToken.None)
+            SduModMerge.Apply(F.Mc, F.Target, Mods, CancellationToken.None)
+            Check(File.Exists(Path.Combine(F.Target, "mods/beta-8.jar")), "Client overrides did not take priority")
+            Check(Not File.Exists(Path.Combine(F.Target, "mods/beta-7.jar")), "Lower-priority override remained active")
+        End Using
+    End Sub
+
+    Private Sub InactiveCopies()
+        Using F As New Fixture()
+            Put(Path.Combine(F.Target, "Website Instance.json"), "original json")
+            MakeMod(Path.Combine(F.Target, "mods/current.jar"), "fabric.mod.json", "{""id"":""example""}")
+            MakeMod(Path.Combine(F.Target, "mods/saved.jar.disabled"), "fabric.mod.json", "{""id"":""example""}")
+            MakeMod(Path.Combine(F.Target, "mods/backup/old.jar"), "fabric.mod.json", "{""id"":""example""}")
+            Dim Stage = Path.Combine(F.Root, "stage")
+            MakeMod(Path.Combine(Stage, "new.jar"), "fabric.mod.json", "{""id"":""example""}")
+            MakeMod(Path.Combine(Stage, "copy.jar.disabled"), "fabric.mod.json", "{""id"":""example""}")
+            MakeMod(Path.Combine(Stage, "backup/older.jar"), "fabric.mod.json", "{""id"":""example""}")
+            SduModMerge.Apply(F.Mc, F.Target, Stage, CancellationToken.None)
+            For Each Name In {"new.jar", "saved.jar.disabled", "copy.jar.disabled", "backup/old.jar", "backup/older.jar"}
+                Check(File.Exists(Path.Combine(F.Target, "mods", Name)), "Inactive copy was lost or active mod was disabled: " & Name)
+            Next
+        End Using
+    End Sub
+
+    Private Sub FirstInstallOverrides()
+        Using F As New Fixture()
+            Dim Source = Path.Combine(F.Root, "overrides")
+            MakeMod(Path.Combine(Source, "mods/new.jar"), "fabric.mod.json", "{""id"":""example""}")
+            MakeMod(Path.Combine(F.Target, "mods/new.jar"), "fabric.mod.json", "{""id"":""example""}")
+            MakeMod(Path.Combine(F.Target, "mods/old-download.jar"), "fabric.mod.json", "{""id"":""example""}")
+            SduModMerge.RecordOverrides(Source, F.Target, CancellationToken.None)
+            SduModMerge.FinalizeFirstInstall(F.Target, CancellationToken.None)
+            Check(File.Exists(Path.Combine(F.Target, "mods/new.jar")), "Preferred first-install mod missing")
+            Check(Not File.Exists(Path.Combine(F.Target, "mods/old-download.jar")), "First install retained a duplicate active mod")
+            Check(Directory.GetFiles(Path.Combine(F.Target, "PCL/SduSupersededMods"), "old-download.jar", SearchOption.AllDirectories).Length = 1, "Superseded packaged JAR was deleted")
+        End Using
     End Sub
 
     Private Sub MakeMod(FileName As String, Marker As String, Content As String)
