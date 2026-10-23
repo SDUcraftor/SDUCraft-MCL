@@ -401,6 +401,7 @@ Public Class FormMain
         TimerMainStart()
         '独立后台检查官网连通性，不等待网络或阻塞启动加载池。
         SduNetworkCheck.CheckAtStartup()
+        SduLauncherUpdate.CheckAtStartup()
         '加载池
         RunInNewThread(
         Sub()

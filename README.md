@@ -1,6 +1,6 @@
 # PCL SDUcraft 修改版
 
-[![Build](https://github.com/SDUcraftor/SDUCraft-MCL/actions/workflows/build.yml/badge.svg)](https://github.com/SDUcraftor/SDUCraft-MCL/actions/workflows/build.yml)
+[![Build](https://github.com/SDUcraftor/SDUCraft-PCL/actions/workflows/build.yml/badge.svg)](https://github.com/SDUcraftor/SDUCraft-PCL/actions/workflows/build.yml)
 [![License](https://img.shields.io/badge/license-PCL%20%E5%88%86%E5%8F%91%E6%9C%89%E9%99%90%E8%AE%B8%E5%8F%AF-946ce6)](LICENCE)
 
 > **本仓库是第三方基于 [Plain Craft Launcher (PCL)](https://github.com/Meloong-Git/PCL) 开源源码的独立二次创作，不是官方版本。**
@@ -14,7 +14,7 @@
 | --- | --- |
 | 开源基线 | `Meloong-Git/PCL`，`main` 分支，提交 `6b9a50d` |
 | 基线版本 | `2.99.0.0` 正式版 |
-| 本分支版本 | `2.99.0.0`（第三方修改） |
+| 本分支版本 | `1.2.0`（SDUcraft 修改版） |
 | 技术栈 | WPF / VB.NET / .NET Framework 4.8 |
 | 构建产物 | `Plain Craft Launcher 2.exe` |
 
@@ -89,6 +89,12 @@ msbuild "Plain Craft Launcher 2\Plain Craft Launcher 2.vbproj" -p:Configuration=
 - 安装任务生命周期回归可运行 `./tests/Run-SduLoaderBridgeTests.ps1`，不下载整合包或修改游戏目录。
 - `NuGet.local.config` 是本机构建配置（含本机 NuGet 源路径），已加入 `.gitignore`。在其他机器构建时请按实际环境替换为自己的 NuGet 源。
 - 登录仅使用 `https://skin.sducraft.cn/api/yggdrasil`，已移除微软登录 Client ID 配置入口。CurseForge API Key 仍在「设置 → 启动 → SDUcraft 接入配置」中填写，或通过环境变量 `PCL_CURSEFORGE_API_KEY` 提供。
+
+## 启动器自动更新
+
+正式版通过本仓库 GitHub Releases 检查启动器更新，可自动下载或下载前提示，校验后在退出时替换程序，并保留旧文件用于恢复。设置 → 启动器中的「检查更新」可手动触发。此流程保留游戏与用户设置，整合包的 mods 更新单独操作。
+
+首次使用需要先手动安装一次包含此功能的版本。维护者推送 `v1.2.0` 这样的新标签，或手动运行 `Release launcher` 工作流，即可测试、构建并发布更新资产。完整步骤、协议和恢复方法见 [启动器发版与自动更新](docs/launcher-updates.md)。
 
 ## 启动网络与皮肤站登录
 

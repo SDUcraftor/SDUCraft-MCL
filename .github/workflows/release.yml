@@ -1,0 +1,112 @@
+name: Release launcher
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release tag, for example v1.2.0'
+        required: true
+        type: string
+      notes:
+        description: 'Brief description of changes'
+        required: false
+        type: string
+      critical:
+        description: 'Important security or compatibility update'
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-launcher-${{ github.event.inputs.version || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          submodules: true
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '8.0.x'
+      - uses: microsoft/setup-msbuild@v3
+        with:
+          msbuild-architecture: x64
+      - name: Set release version
+        env:
+          REQUESTED_VERSION: ${{ github.event.inputs.version || github.ref_name }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          .\scripts\Set-LauncherVersion.ps1 -Version $env:REQUESTED_VERSION
+          $tag = $env:REQUESTED_VERSION -creplace '^v', ''
+          $existing = git rev-parse --verify ('refs/tags/v' + $tag) 2>$null
+          if ($LASTEXITCODE -eq 0) {
+            $tagCommit = git rev-list -n 1 ('v' + $tag)
+            if ($tagCommit -ne $env:GITHUB_SHA) { throw 'Existing tag points to another commit' }
+          }
+          $latest = gh release view --repo $env:GITHUB_REPOSITORY --json tagName 2>$null
+          if ($LASTEXITCODE -eq 0) {
+            $latestTag = ($latest | ConvertFrom-Json).tagName
+            if ($latestTag -cmatch '^v(\d+\.\d+\.\d+)$') {
+              if ([version]$tag -le [version]$Matches[1]) { throw 'Release version must be newer than the current stable release' }
+            }
+          }
+          exit 0
+      - name: Restore packages
+        run: dotnet restore PCLCS\PCLCS.csproj -p:Configuration=Release
+      - name: Run regressions
+        run: |
+          .\tests\Run-SduLoaderBridgeTests.ps1
+          .\tests\Run-SduBareClientTests.ps1
+          .\tests\Run-SduScrollTests.ps1
+          .\tests\Run-SduNetworkCheckTests.ps1
+          .\tests\Run-SduSkinLoginTests.ps1
+          .\tests\Run-SduIsolationTests.ps1
+          .\tests\Run-SduUpdateTests.ps1
+      - name: Build release
+        run: msbuild "Plain Craft Launcher 2\Plain Craft Launcher 2.vbproj" -p:Configuration=Release
+      - name: Test built update helper
+        run: .\tests\Run-SduUpdateIntegrationTests.ps1 -Executable 'Plain Craft Launcher 2\bin\Plain Craft Launcher 2.exe'
+      - name: Prepare update assets
+        env:
+          RELEASE_NOTES: ${{ github.event.inputs.notes }}
+          CRITICAL_UPDATE: ${{ github.event.inputs.critical }}
+        run: |
+          $notes = $env:RELEASE_NOTES
+          if (-not $notes) { $notes = git log -1 --format=%s }
+          .\scripts\New-LauncherRelease.ps1 -Version $env:RELEASE_VERSION `
+            -Executable 'Plain Craft Launcher 2\obj\Release\Plain Craft Launcher 2.exe' `
+            -OutputDirectory (Join-Path $env:RUNNER_TEMP 'launcher-release') `
+            -Notes $notes -Critical:($env:CRITICAL_UPDATE -eq 'true')
+      - uses: actions/upload-artifact@v7
+        with:
+          name: launcher-${{ env.RELEASE_VERSION }}
+          path: ${{ runner.temp }}/launcher-release/*
+      - name: Publish complete release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $output = Join-Path $env:RUNNER_TEMP 'launcher-release'
+          $assets = @((Join-Path $output 'SDUCraft-Launcher.exe'), (Join-Path $output 'SDUCraft-Launcher.exe.config'), (Join-Path $output 'sducraft-update.json'))
+          $existing = gh release view $env:RELEASE_TAG --repo $env:GITHUB_REPOSITORY --json isDraft 2>$null
+          if ($LASTEXITCODE -eq 0) {
+            if (-not ($existing | ConvertFrom-Json).isDraft) { throw 'Published releases cannot be overwritten' }
+            gh release upload $env:RELEASE_TAG @assets --clobber --repo $env:GITHUB_REPOSITORY
+            if ($LASTEXITCODE -ne 0) { throw 'Release asset upload failed' }
+            gh release edit $env:RELEASE_TAG --repo $env:GITHUB_REPOSITORY --notes-file (Join-Path $output 'release-notes.md')
+          } else {
+            gh release create $env:RELEASE_TAG @assets --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --draft --title ('SDUcraft ' + $env:RELEASE_VERSION) --notes-file (Join-Path $output 'release-notes.md')
+          }
+          if ($LASTEXITCODE -ne 0) { throw 'Draft release creation failed' }
+          gh release edit $env:RELEASE_TAG --repo $env:GITHUB_REPOSITORY --draft=false --latest
+          if ($LASTEXITCODE -ne 0) { throw 'Release publishing failed' }

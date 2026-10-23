@@ -113,11 +113,11 @@
                         <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
                     <TextBlock VerticalAlignment="Center" HorizontalAlignment="Left" Text="启动器更新" Margin="0,0,25,0" />
-                    <local:MyComboBox x:Name="ComboSystemUpdate" local:SettingService.Key="SystemSystemUpdate" Grid.Column="1">
+                    <local:MyComboBox x:Name="ComboSystemUpdate" local:SettingService.Key="SystemSystemUpdate" Grid.Column="1" ToolTip="从 SDUcraft 的 GitHub Releases 获取启动器更新，退出后替换程序和运行配置，保留游戏与用户设置。&#xa;关闭自动检查后，仍可使用「检查更新」按钮。">
                         <local:MyComboBoxItem Content="在有新版本时自动下载" x:Name="ItemSystemUpdateDownload" />
                         <local:MyComboBoxItem Content="在有新版本时显示提示" />
-                        <local:MyComboBoxItem Content="仅在有重大漏洞更新时显示提示" />
-                        <local:MyComboBoxItem Content="关闭更新提示" />
+                        <local:MyComboBoxItem Content="仅提示重要更新" />
+                        <local:MyComboBoxItem Content="关闭自动检查" />
                     </local:MyComboBox>
                     <TextBlock VerticalAlignment="Center" HorizontalAlignment="Left" Text="启动器公告" Margin="0,0,25,0" Grid.Row="2" />
                     <local:MyComboBox x:Name="ComboSystemActivity" local:SettingService.Key="SystemSystemActivity" Grid.Column="1" Grid.Row="2">

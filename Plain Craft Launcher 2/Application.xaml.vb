@@ -5,6 +5,10 @@ Public Class Application
 
     '开始
     Private Sub Application_Startup(sender As Object, e As StartupEventArgs) Handles Me.Startup
+        If e.Args.Length > 0 AndAlso e.Args(0) = "--sdu-update" Then
+            Environment.Exit(SduLauncherUpdate.RunHelper(e.Args))
+            Return
+        End If
         Try
             '核心初始化
             MeloongCore.Main.Init("PCL")

@@ -6,6 +6,7 @@ on:
       - 'PCLCS/**'
       - 'MeloongCore/**'
       - 'tests/**'
+      - 'scripts/**'
       - 'global.json'
       - '*.sln'
       - '.github/workflows/**'
@@ -15,6 +16,7 @@ on:
       - 'PCLCS/**'
       - 'MeloongCore/**'
       - 'tests/**'
+      - 'scripts/**'
       - 'global.json'
       - '*.sln'
       - '.github/workflows/**'
@@ -91,11 +93,19 @@ jobs:
     - name: Test forced instance isolation
       run: .\tests\Run-SduIsolationTests.ps1
 
+    - name: Test launcher update lifecycle
+      run: .\tests\Run-SduUpdateTests.ps1
+
     - name: Build
       run: msbuild "Plain Craft Launcher 2\Plain Craft Launcher 2.vbproj" -p:Configuration=${{ matrix.configuration }}
+
+    - name: Test built update helper
+      run: .\tests\Run-SduUpdateIntegrationTests.ps1 -Executable 'Plain Craft Launcher 2\bin\Plain Craft Launcher 2.exe'
 
     - name: Upload a Build Artifact
       uses: actions/upload-artifact@v7
       with:
         name: ${{ matrix.configuration }} ${{ env.describe }}
-        path: Plain Craft Launcher 2\obj\${{ matrix.configuration }}\Plain Craft Launcher 2.exe
+        path: |
+          Plain Craft Launcher 2/bin/Plain Craft Launcher 2.exe
+          Plain Craft Launcher 2/bin/Plain Craft Launcher 2.exe.config

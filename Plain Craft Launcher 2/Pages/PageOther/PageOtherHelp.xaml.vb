@@ -34,6 +34,12 @@ Public Class PageOtherHelp
                     "mrpack、CurseForge 等标准格式目前仅支持全新安装；遇到同名实例会停止，不会覆盖旧实例。",
             .Keywords = "更新 升级 同步 mods 模组 mod forge fabric 配置 存档 mrpack curseforge", .LinkText = "查看官网整合包说明 ↗", .LinkUrl = "https://www.sducraft.top/downloads/game"},
         New HelpTopic With {
+            .Title = "启动器程序如何自动更新？", .Category = "安装与更新",
+            .Body = "正式版打开后会按「设置 → 启动器 → 启动器更新」中的选项检查 GitHub Releases，也可点击同页的「检查更新」。首次使用自动更新，需要先手动安装支持该功能的启动器版本。" & vbCrLf &
+                    "下载完成后可选择立即重启，或退出时安装。更新仅替换当前启动器 EXE 及其相邻的运行配置，保留自定义文件名、皮肤站账号设置和游戏目录；整合包的模组更新仍单独操作。" & vbCrLf &
+                    "旧程序和配置会保留在启动器旁 .sdu-update-<随机标识>/backup.exe 及 backup.exe.config 中。若替换失败会尝试恢复旧文件。GitHub 无法连接时可稍后重试，或从发布页手动下载 EXE 和对应配置。",
+            .Keywords = "启动器 自动更新 GitHub Releases 检查更新 程序 备份 回退", .LinkText = "打开启动器发布页 ↗", .LinkUrl = SduUpdateCore.ReleasesUrl},
+        New HelpTopic With {
             .Title = "旧模组在哪里备份，如何恢复？", .Category = "备份与恢复",
             .Body = "启动器固定开启版本隔离，各实例的存档、mods 和配置分别保存在 versions/<实例名>/ 中。若此前使用公共目录，请将需要的旧文件手动复制到对应实例；旧文件不会自动移动或删除。" & vbCrLf &
                     "每次同步 mods 前，旧目录会保存到游戏根目录下的：" & vbCrLf &

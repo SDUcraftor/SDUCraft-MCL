@@ -1,5 +1,16 @@
 # SDUcraft 安装任务回归
 
+## 启动器自动更新
+
+```powershell
+.\tests\Run-SduUpdateTests.ps1
+.\tests\Run-SduUpdateIntegrationTests.ps1 -Executable 'Plain Craft Launcher 2\bin\Plain Craft Launcher 2.exe'
+```
+
+第一项用 Windows 自带 VB 编译器编译实际 `SduUpdateCore.vb`，验证版本与 manifest、下载重定向限制、不携带凭据、失败与取消、大小限制、计划路径、EXE/配置校验、旧文件变更检测、成功替换及各步失败回滚。测试使用模拟 HTTP 与临时文件，不联网。另在临时工程副本上运行实际版本设置、发版打包脚本，检查产物版本与校验信息。
+
+第二项需先完整构建工程，直接执行该 EXE 的更新辅助分支，验证等待真实临时父进程退出、自定义文件名、EXE 与配置替换、旧文件备份、用户设置保留，且不进入主窗口初始化。Actions 的普通构建和正式发布都会执行。测试不会替换正在使用的启动器，也不会发布 Release 或操作游戏目录。
+
 ## 固定开启版本隔离
 
 ```powershell
