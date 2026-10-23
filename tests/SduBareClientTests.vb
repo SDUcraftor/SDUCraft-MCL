@@ -47,11 +47,142 @@ Module SduBareClientTests
             Run("overrides supersede an older manifest JAR with the same ID", AddressOf OverridesWin)
             Run("disabled copies and nested backups are not active duplicate mods", AddressOf InactiveCopies)
             Run("first installation preserves superseded JARs outside mods", AddressOf FirstInstallOverrides)
+            Run("ChatImage first install picks internal newer version and keeps backup", AddressOf ChatImageFirstInstall)
+            Run("ChatImage update resolves duplicate overrides and preserves user data", AddressOf ChatImageUpdate)
+            Run("version comparison supports all mod descriptors", AddressOf DescriptorVersions)
+            Run("numeric versions, prereleases and build metadata compare correctly", AddressOf VersionOrdering)
+            Run("equal or unknown duplicate versions preserve existing data", AddressOf AmbiguousModVersions)
+            Run("identical duplicate JARs can be deduplicated", AddressOf IdenticalMods)
+            Run("multi-ID duplicate resolution cannot discard unrelated mods", AddressOf BundledModConflict)
             Console.WriteLine("PASS: " & Passed & " bare-client filesystem scenarios (production installer, real temporary ZIP/files).")
         Catch ErrorValue As Exception
             Console.Error.WriteLine(ErrorValue.ToString())
             Environment.ExitCode = 1
         End Try
+    End Sub
+
+    Private Sub ChatImageFirstInstall()
+        Using F As New Fixture()
+            Dim OldName = "[聊天栏图片显示] ChatImage-1.2.4+1.21+fabric.jar"
+            Dim NewName = "ChatImage-1.2.5+1.21+fabric.jar"
+            FabricMod(Path.Combine(F.Target, "mods", OldName), "1.2.4+1.21+fabric")
+            FabricMod(Path.Combine(F.Target, "mods", NewName), "1.2.5+1.21+fabric")
+            SduModMerge.FinalizeFirstInstall(F.Target, CancellationToken.None)
+            Check(File.Exists(Path.Combine(F.Target, "mods", NewName)), "New ChatImage missing")
+            Check(Not File.Exists(Path.Combine(F.Target, "mods", OldName)), "Old ChatImage remained active")
+            Dim Backups = Directory.GetFiles(Path.Combine(F.Target, "PCL/SduSupersededMods"), "*", SearchOption.AllDirectories)
+            Check(Backups.Any(Function(Value) Path.GetFileName(Value) = OldName), "Old ChatImage was not backed up: " & String.Join(";", Backups))
+            SduModMerge.FinalizeFirstInstall(F.Target, CancellationToken.None)
+        End Using
+    End Sub
+
+    Private Sub ChatImageUpdate()
+        Using F As New Fixture()
+            Put(Path.Combine(F.Target, "Website Instance.json"), "original json")
+            Put(Path.Combine(F.Target, "config/user.cfg"), "user config")
+            Put(Path.Combine(F.Target, "options.txt"), "user keys")
+            Put(Path.Combine(F.Target, "mods/local.jar"), "local mod")
+            FabricMod(Path.Combine(F.Target, "mods/current.jar"), "1.2.3")
+            Dim Stage = Path.Combine(F.Root, "stage"), Source = Path.Combine(F.Root, "overrides")
+            For Each Folder In {Path.Combine(Source, "mods"), Path.Combine(Stage, "mods")}
+                FabricMod(Path.Combine(Folder, "old.jar"), "1.2.4")
+                FabricMod(Path.Combine(Folder, "new.jar"), "1.2.5")
+            Next
+            SduModMerge.RecordOverrides(Source, Stage, CancellationToken.None)
+            Dim Result = SduModMerge.Apply(F.Mc, F.Target, Path.Combine(Stage, "mods"), CancellationToken.None)
+            Check(File.Exists(Path.Combine(F.Target, "mods/new.jar")), "Newer duplicate override missing")
+            Check(Not File.Exists(Path.Combine(F.Target, "mods/old.jar")), "Older duplicate override active")
+            Check(Not File.Exists(Path.Combine(F.Target, "mods/current.jar")), "Old installed version active")
+            EqualFile(Path.Combine(F.Target, "mods/local.jar"), "local mod")
+            EqualFile(Path.Combine(F.Target, "config/user.cfg"), "user config")
+            EqualFile(Path.Combine(F.Target, "options.txt"), "user keys")
+            Check(File.Exists(Path.Combine(Result.ModsBackup, "current.jar")), "Old installed version not backed up")
+            '来源优先级仍高于版本号：明确覆盖的较旧版本也不能被清单下载替换。
+            FabricMod(Path.Combine(Stage, "mods/manifest.jar"), "9.0.0")
+            SduModMerge.Apply(F.Mc, F.Target, Path.Combine(Stage, "mods"), CancellationToken.None)
+            Check(Not File.Exists(Path.Combine(F.Target, "mods/manifest.jar")), "Version comparison overrode source priority")
+        End Using
+    End Sub
+
+    Private Sub FabricMod(Name As String, Version As String)
+        MakeMod(Name, "fabric.mod.json", New JObject(New JProperty("id", "chatimage"), New JProperty("version", Version)).ToString())
+    End Sub
+
+    Private Sub DescriptorVersions()
+        Dim Descriptors As New Dictionary(Of String, String) From {
+            {"quilt.mod.json", "{""quilt_loader"":{""id"":""chatimage"",""version"":""VERSION""}}"},
+            {"META-INF/mods.toml", "[[mods]]" & vbLf & "modId='chatimage'" & vbLf & "version='VERSION'"},
+            {"META-INF/neoforge.mods.toml", "[[mods]]" & vbLf & "modId='chatimage'" & vbLf & "version='VERSION'"},
+            {"mcmod.info", "[{""modid"":""chatimage"",""version"":""VERSION""}]"}}
+        For Each Descriptor In Descriptors
+            Using F As New Fixture()
+                MakeMod(Path.Combine(F.Target, "mods/old.jar"), Descriptor.Key, Descriptor.Value.Replace("VERSION", "1.2.4"))
+                MakeMod(Path.Combine(F.Target, "mods/new.jar"), Descriptor.Key, Descriptor.Value.Replace("VERSION", "1.2.5"))
+                SduModMerge.FinalizeFirstInstall(F.Target, CancellationToken.None)
+                Check(File.Exists(Path.Combine(F.Target, "mods/new.jar")) AndAlso Not File.Exists(Path.Combine(F.Target, "mods/old.jar")), "Wrong version for " & Descriptor.Key)
+            End Using
+        Next
+        Using F As New Fixture()
+            For Each Version In {"1.2.4", "1.2.5"}
+                Dim Name = Path.Combine(F.Target, "mods", Version & ".jar")
+                MakeMod(Name, "META-INF/mods.toml", "[[mods]]" & vbLf & "modId='chatimage'" & vbLf & "version='${file.jarVersion}'")
+                Using Archive = ZipFileOpenUpdate(Name)
+                    AddEntry(Archive, "META-INF/MANIFEST.MF", "Manifest-Version: 1.0" & vbCrLf & "Implementation-Version: " & Version & vbCrLf)
+                End Using
+            Next
+            SduModMerge.FinalizeFirstInstall(F.Target, CancellationToken.None)
+            Check(File.Exists(Path.Combine(F.Target, "mods/1.2.5.jar")) AndAlso Not File.Exists(Path.Combine(F.Target, "mods/1.2.4.jar")), "Manifest version substitution failed")
+        End Using
+    End Sub
+
+    Private Function ZipFileOpenUpdate(Name As String) As ZipArchive
+        Return New ZipArchive(File.Open(Name, FileMode.Open, FileAccess.ReadWrite), ZipArchiveMode.Update)
+    End Function
+
+    Private Sub VersionOrdering()
+        For Each Versions In {New String() {"1.2.9", "1.2.10"}, New String() {"1.2.5-beta.9", "1.2.5-beta.10"}, New String() {"1.2.5-rc.1", "1.2.5"}, New String() {"1.2.4+9999", "1.2.5+1"}}
+            Using F As New Fixture()
+                FabricMod(Path.Combine(F.Target, "mods/ZZZ-999.jar"), Versions(0))
+                FabricMod(Path.Combine(F.Target, "mods/AAA-001.jar"), Versions(1))
+                SduModMerge.FinalizeFirstInstall(F.Target, CancellationToken.None)
+                Check(File.Exists(Path.Combine(F.Target, "mods/AAA-001.jar")) AndAlso Not File.Exists(Path.Combine(F.Target, "mods/ZZZ-999.jar")), "Version comparison used filename or lexicographic numbers")
+            End Using
+        Next
+    End Sub
+
+    Private Sub AmbiguousModVersions()
+        For Each Versions In {New String() {"1.2.5", "1.2.5"}, New String() {"unknown", "1.2.5"}, New String() {"1.2.5+build1", "1.2.5+build2"}}
+            Using F As New Fixture()
+                Put(Path.Combine(F.Target, "Website Instance.json"), "original json")
+                Put(Path.Combine(F.Target, "mods/local.jar"), "keep")
+                Dim Stage = Path.Combine(F.Root, "incoming")
+                FabricMod(Path.Combine(Stage, "a.jar"), Versions(0))
+                FabricMod(Path.Combine(Stage, "b.jar"), Versions(1))
+                Expect(Of InvalidDataException)(Sub() SduModMerge.Apply(F.Mc, F.Target, Stage, CancellationToken.None))
+                EqualFile(Path.Combine(F.Target, "mods/local.jar"), "keep")
+                Check(Directory.GetFiles(Path.Combine(F.Target, "mods")).Length = 1, "Ambiguous update changed mods")
+            End Using
+        Next
+    End Sub
+
+    Private Sub IdenticalMods()
+        Using F As New Fixture()
+            FabricMod(Path.Combine(F.Target, "mods/a.jar"), "1.2.5")
+            File.Copy(Path.Combine(F.Target, "mods/a.jar"), Path.Combine(F.Target, "mods/b.jar"))
+            SduModMerge.FinalizeFirstInstall(F.Target, CancellationToken.None)
+            Check(Directory.GetFiles(Path.Combine(F.Target, "mods")).Length = 1, "Identical duplicate was not removed")
+            Check(Directory.GetFiles(Path.Combine(F.Target, "PCL/SduSupersededMods"), "*.jar", SearchOption.AllDirectories).Length = 1, "Identical duplicate was not preserved")
+        End Using
+    End Sub
+
+    Private Sub BundledModConflict()
+        Using F As New Fixture()
+            Dim Mods = Path.Combine(F.Target, "mods")
+            MakeMod(Path.Combine(Mods, "bundle.jar"), "mcmod.info", "[{""modid"":""chatimage"",""version"":""1.2.4""},{""modid"":""local"",""version"":""1.0""}]")
+            FabricMod(Path.Combine(Mods, "new.jar"), "1.2.5")
+            Expect(Of InvalidDataException)(Sub() SduModMerge.FinalizeFirstInstall(F.Target, CancellationToken.None))
+            Check(Directory.GetFiles(Mods).Length = 2, "Bundle containing unique mod was removed")
+        End Using
     End Sub
 
     Private Sub OverridesWin()

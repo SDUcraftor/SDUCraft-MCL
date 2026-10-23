@@ -141,8 +141,8 @@ Friend Module SduModMerge
             Dim Winner = Choices(0)
             If Choices.Count > 1 Then
                 Dim PreferredChoices = Choices.Where(Function(File) Preferred.Contains(File)).ToList()
-                If PreferredChoices.Count <> 1 Then Throw New InvalidDataException("无法确定重复模组的有效版本：" & Entry.Key & "（" & String.Join("、", Choices.Select(Function(File) Path.GetFileName(File))) & "）。请检查整合包内容。")
-                Winner = PreferredChoices(0)
+                Winner = If(PreferredChoices.Count = 1, PreferredChoices(0),
+                    SelectNewest(Entry.Key, If(PreferredChoices.Count > 0, PreferredChoices, Choices)))
                 Plan.Superseded.UnionWith(Choices.Where(Function(File) Not String.Equals(File, Winner, StringComparison.OrdinalIgnoreCase)))
             End If
             Plan.Ids.Add(Entry.Key, Winner)
@@ -150,6 +150,64 @@ Friend Module SduModMerge
         If Plan.Ids.Values.Any(Function(File) Plan.Superseded.Contains(File)) Then Throw New InvalidDataException("重复 JAR 同时包含其他不可替代模组，已停止更新以保留内容。")
         Plan.Files = Files.Where(Function(File) Not Plan.Superseded.Contains(File)).ToList()
         Return Plan
+    End Function
+
+    '同一来源重复打包时只比较 JAR 元数据，不从文件名、复制时间推断版本。
+    Private Function SelectNewest(Id As String, Choices As List(Of String)) As String
+        Dim Versions As New Dictionary(Of String, Match)(StringComparer.OrdinalIgnoreCase)
+        For Each File In Choices
+            Dim Metadata = ReadModMetadata(File)
+            Dim Value As String = Nothing
+            Metadata.TryGetValue(Id, Value)
+            Dim Parsed = Regex.Match(If(Value, ""), "^v?(?<core>\d+(?:\.\d+)*)(?:-(?<pre>[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?(?:\+[0-9A-Za-z-]+(?:[.+][0-9A-Za-z-]+)*)?$")
+            If Not Parsed.Success Then Throw DuplicateError(Id, Choices)
+            Versions.Add(File, Parsed)
+        Next
+        Dim Ordered = Choices.OrderBy(Function(File) File, StringComparer.OrdinalIgnoreCase).ToList()
+        Dim Winner = Ordered(0)
+        For Each File In Ordered.Skip(1)
+            If CompareModVersions(Versions(File), Versions(Winner)) > 0 Then Winner = File
+        Next
+        '版本相同且内容不同的构建不能随意选一个；完全相同的副本可以去重。
+        For Each File In Ordered.Where(Function(Value) Not String.Equals(Value, Winner, StringComparison.OrdinalIgnoreCase))
+            If CompareModVersions(Versions(File), Versions(Winner)) = 0 AndAlso Not SameModBytes(File, Winner) Then Throw DuplicateError(Id, Choices)
+        Next
+        Return Winner
+    End Function
+
+    Private Function DuplicateError(Id As String, Choices As List(Of String)) As InvalidDataException
+        Return New InvalidDataException("无法确定重复模组的有效版本：" & Id & "（" & String.Join("、", Choices.Select(Function(File) Path.GetFileName(File))) & "）。缺少可比较的内部版本号，或同版本文件内容不同。请检查整合包内容。")
+    End Function
+
+    Private Function CompareNumber(Left As String, Right As String) As Integer
+        Left = Left.TrimStart("0"c) : Right = Right.TrimStart("0"c)
+        If Left.Length <> Right.Length Then Return Left.Length.CompareTo(Right.Length)
+        Return String.Compare(Left, Right, StringComparison.Ordinal)
+    End Function
+
+    Private Function CompareModVersions(Left As Match, Right As Match) As Integer
+        Dim A = Left.Groups("core").Value.Split("."c), B = Right.Groups("core").Value.Split("."c)
+        For Index = 0 To Math.Max(A.Length, B.Length) - 1
+            Dim Comparison = CompareNumber(If(Index < A.Length, A(Index), "0"), If(Index < B.Length, B(Index), "0"))
+            If Comparison <> 0 Then Return Comparison
+        Next
+        Dim AP = Left.Groups("pre").Value, BP = Right.Groups("pre").Value
+        If AP = "" OrElse BP = "" Then Return If(AP = BP, 0, If(AP = "", 1, -1))
+        A = AP.Split("."c) : B = BP.Split("."c)
+        For Index = 0 To Math.Min(A.Length, B.Length) - 1
+            Dim AN = Regex.IsMatch(A(Index), "^\d+$"), BN = Regex.IsMatch(B(Index), "^\d+$")
+            Dim Comparison = If(AN AndAlso BN, CompareNumber(A(Index), B(Index)),
+                If(AN <> BN, If(AN, -1, 1), String.Compare(A(Index), B(Index), StringComparison.Ordinal)))
+            If Comparison <> 0 Then Return Comparison
+        Next
+        Return A.Length.CompareTo(B.Length)
+    End Function
+
+    Private Function SameModBytes(Left As String, Right As String) As Boolean
+        If SduFileSystem.File.Length(Left) <> SduFileSystem.File.Length(Right) Then Return False
+        Using Hash = System.Security.Cryptography.SHA256.Create(), A = SduFileSystem.File.OpenRead(Left), B = SduFileSystem.File.OpenRead(Right)
+            Return Hash.ComputeHash(A).SequenceEqual(Hash.ComputeHash(B))
+        End Using
     End Function
 
     Private Function IsRootMod(Root As String, File As String, IncludeDisabled As Boolean) As Boolean
@@ -218,7 +276,11 @@ Friend Module SduModMerge
 
     ''' <summary>只读根级模组描述，不执行 JAR；无法识别的文件仍按相对路径合并。</summary>
     Friend Function ReadModIds(File As String) As HashSet(Of String)
-        Dim Result As New HashSet(Of String)(StringComparer.OrdinalIgnoreCase)
+        Return New HashSet(Of String)(ReadModMetadata(File).Keys, StringComparer.OrdinalIgnoreCase)
+    End Function
+
+    Private Function ReadModMetadata(File As String) As Dictionary(Of String, String)
+        Dim Result As New Dictionary(Of String, String)(StringComparer.OrdinalIgnoreCase)
         Dim Lower = File.ToLowerInvariant()
         If Not (Lower.EndsWith(".jar") OrElse Lower.EndsWith(".jar.disabled") OrElse Lower.EndsWith(".jar.disable")) Then Return Result
         Try
@@ -229,13 +291,24 @@ Friend Module SduModMerge
                         Case "fabric.mod.json", "quilt.mod.json"
                             Using Reader As New StreamReader(Entry.Open(), Encoding.UTF8)
                                 Dim Json = JObject.Parse(Reader.ReadToEnd())
-                                AddId(Result, CStr(If(Json("quilt_loader") IsNot Nothing, Json("quilt_loader")("id"), Json("id"))))
+                                Dim Info = If(Json("quilt_loader"), Json)
+                                AddMod(Result, CStr(Info("id")), CStr(Info("version")))
                             End Using
                         Case "meta-inf/mods.toml", "meta-inf/neoforge.mods.toml"
                             Using Reader As New StreamReader(Entry.Open(), Encoding.UTF8)
                                 For Each Block As Match In Regex.Matches(Reader.ReadToEnd(), "(?ms)^\s*\[\[mods\]\]\s*(?<body>.*?)(?=^\s*\[|\z)")
                                     Dim Id = Regex.Match(Block.Groups("body").Value, "(?m)^\s*modId\s*=\s*[""'](?<id>[^""']+)[""']")
-                                    If Id.Success Then AddId(Result, Id.Groups("id").Value)
+                                    Dim Version = Regex.Match(Block.Groups("body").Value, "(?m)^\s*version\s*=\s*[""'](?<version>[^""']+)[""']")
+                                    Dim Value = Version.Groups("version").Value
+                                    If Value = "${file.jarVersion}" Then
+                                        Dim Manifest = Archive.GetEntry("META-INF/MANIFEST.MF")
+                                        If Manifest IsNot Nothing AndAlso Manifest.Length <= 1024 * 1024 Then
+                                            Using ManifestReader As New StreamReader(Manifest.Open(), Encoding.UTF8)
+                                                Value = Regex.Match(ManifestReader.ReadToEnd(), "(?m)^Implementation-Version:\s*([^\r\n]+)").Groups(1).Value.Trim()
+                                            End Using
+                                        End If
+                                    End If
+                                    If Id.Success Then AddMod(Result, Id.Groups("id").Value, Value)
                                 Next
                             End Using
                         Case "mcmod.info"
@@ -244,7 +317,7 @@ Friend Module SduModMerge
                                 Dim Mods = If(TypeOf Json Is JArray, Json, Json("modList"))
                                 If Mods IsNot Nothing Then
                                     For Each ModInfo In Mods
-                                        AddId(Result, CStr(ModInfo("modid")))
+                                        AddMod(Result, CStr(ModInfo("modid")), CStr(ModInfo("version")))
                                     Next
                                 End If
                             End Using
@@ -258,7 +331,7 @@ Friend Module SduModMerge
         Return Result
     End Function
 
-    Private Sub AddId(Ids As HashSet(Of String), Id As String)
-        If Id IsNot Nothing AndAlso Regex.IsMatch(Id, "^[A-Za-z0-9_.-]{1,128}$") Then Ids.Add(Id)
+    Private Sub AddMod(Mods As Dictionary(Of String, String), Id As String, Version As String)
+        If Id IsNot Nothing AndAlso Regex.IsMatch(Id, "^[A-Za-z0-9_.-]{1,128}$") Then Mods(Id) = Version
     End Sub
 End Module
