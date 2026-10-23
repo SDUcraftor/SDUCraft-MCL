@@ -96,11 +96,17 @@ jobs:
     - name: Test launcher update lifecycle
       run: .\tests\Run-SduUpdateTests.ps1
 
+    - name: Test once-only startup notice
+      run: .\tests\Run-SduStartupNoticeTests.ps1
+
     - name: Build
       run: msbuild "Plain Craft Launcher 2\Plain Craft Launcher 2.vbproj" -p:Configuration=${{ matrix.configuration }}
 
     - name: Test built update helper
       run: .\tests\Run-SduUpdateIntegrationTests.ps1 -Executable 'Plain Craft Launcher 2\bin\Plain Craft Launcher 2.exe'
+
+    - name: Test settings and help layout
+      run: .\tests\Run-SduSettingsLayoutTests.ps1 -Executable 'Plain Craft Launcher 2\bin\Plain Craft Launcher 2.exe'
 
     - name: Upload a Build Artifact
       uses: actions/upload-artifact@v7

@@ -11,8 +11,6 @@
                             <ColumnDefinition Width="60" />
                         </Grid.ColumnDefinitions>
                         <Grid.RowDefinitions>
-
-                            <RowDefinition Height="9" />
                             <RowDefinition Height="28" />
                             <RowDefinition Height="9" />
                             <RowDefinition Height="28" />
@@ -22,9 +20,9 @@
                         </Grid.RowDefinitions>
 
                         <TextBlock Grid.Row="0" VerticalAlignment="Center" HorizontalAlignment="Left" Text="游戏窗口标题" Margin="0,0,25,0" />
-                        <local:MyTextBox x:Name="TextArgumentTitle" Grid.Row="0" Grid.ColumnSpan="2" local:SettingService.Key="VersionArgumentTitle" Grid.Column="1" ToolTip="自定义游戏窗口的标题，若留空则跟随全局设置的值。&#xa;你可以用替换标记来动态改变其内容，在 更多 → 帮助 中搜索 “替换标记” 以了解用法。" HintText="跟随全局设置" MaxLength="100" />
+                        <local:MyTextBox x:Name="TextArgumentTitle" Grid.Row="0" Grid.ColumnSpan="2" local:SettingService.Key="VersionArgumentTitle" Grid.Column="1" ToolTip="自定义游戏窗口的标题，若留空则跟随全局设置的值。&#xa;你可以用替换标记来动态改变其内容。" HintText="跟随全局设置" MaxLength="100" />
                         <TextBlock Grid.Row="2" VerticalAlignment="Center" HorizontalAlignment="Left" Text="自定义信息" Margin="0,0,25,0" />
-                        <local:MyTextBox x:Name="TextArgumentInfo" Grid.Row="2" Grid.ColumnSpan="2" local:SettingService.Key="VersionArgumentInfo" Grid.Column="1" HintText="跟随全局设置" ToolTip="注意：Mojang 于 Minecraft 26.1 移除了该设置，因此该设置在新版本中无效。&#xa;&#xa;该信息会显示在游戏主界面的左下角，与 F3 调试页面的左上角。&#xa;若留空，则跟随全局设置的值。&#xa;&#xa;你可以用替换标记来动态改变其内容，在 更多 → 帮助 中搜索 “替换标记” 以了解用法。">
+                        <local:MyTextBox x:Name="TextArgumentInfo" Grid.Row="2" Grid.ColumnSpan="2" local:SettingService.Key="VersionArgumentInfo" Grid.Column="1" HintText="跟随全局设置" ToolTip="注意：Mojang 于 Minecraft 26.1 移除了该设置，因此该设置在新版本中无效。&#xa;&#xa;该信息会显示在游戏主界面的左下角，与 F3 调试页面的左上角。&#xa;若留空，则跟随全局设置的值。&#xa;&#xa;你可以用替换标记来动态改变其内容。">
                             <local:MyTextBox.ValidateRules>
                                 <local:ValidateExcept>
                                     <local:ValidateExcept.Excepts>
@@ -171,9 +169,9 @@
                         <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
                     <TextBlock Grid.Row="0" VerticalAlignment="Center" HorizontalAlignment="Left" Text="Java 虚拟机参数" Margin="0,0,25,0" />
-                    <local:MyTextBox x:Name="TextAdvanceJvm" Grid.Row="0" Grid.ColumnSpan="2" local:SettingService.Key="VersionAdvanceJvm" Grid.Column="1" MaxLength="4000" ToolTip="启动 Minecraft 时使用的额外 JVM 参数，在没有确定把握的情况下请不要尝试修改。&#xa;&#xa;支持 Minecraft 版本 JSON 中的字符串替换标记，例如 ${library_directory}。&#xa;也支持使用 PCL 的替换标记，在 更多 → 帮助 中搜索 “替换标记” 以了解用法。&#xa;&#xa;若留空，则跟随全局设置的值。" HintText="跟随全局设置" Height="100" AcceptsReturn="True" TextWrapping="Wrap" VerticalContentAlignment="Top" Padding="0,5" VerticalScrollBarVisibility="Auto" />
+                    <local:MyTextBox x:Name="TextAdvanceJvm" Grid.Row="0" Grid.ColumnSpan="2" local:SettingService.Key="VersionAdvanceJvm" Grid.Column="1" MaxLength="4000" ToolTip="启动 Minecraft 时使用的额外 JVM 参数，在没有确定把握的情况下请不要尝试修改。&#xa;&#xa;支持 Minecraft 版本 JSON 中的字符串替换标记，例如 ${library_directory}。&#xa;也支持使用 PCL 的替换标记。&#xa;&#xa;若留空，则跟随全局设置的值。" HintText="跟随全局设置" Height="100" AcceptsReturn="True" TextWrapping="Wrap" VerticalContentAlignment="Top" Padding="0,5" VerticalScrollBarVisibility="Auto" />
                     <TextBlock Grid.Row="2" VerticalAlignment="Center" HorizontalAlignment="Left" Text="游戏参数" Margin="0,0,25,0" />
-                    <local:MyTextBox x:Name="TextAdvanceGame" Grid.Row="2" Grid.ColumnSpan="2" local:SettingService.Key="VersionAdvanceGame" Grid.Column="1" ToolTip="文本框中的内容将会被直接拼合在启动参数的末尾。&#xa;例如，输入 --demo 则会以试玩模式启动游戏。&#xa;&#xa;支持 Minecraft 版本 JSON 中的字符串替换标记，例如 ${library_directory}。&#xa;也支持使用 PCL 的替换标记，在 更多 → 帮助 中搜索 “替换标记” 以了解用法。&#xa;&#xa;若留空，则跟随全局设置的值。" HintText="跟随全局设置" />
+                    <local:MyTextBox x:Name="TextAdvanceGame" Grid.Row="2" Grid.ColumnSpan="2" local:SettingService.Key="VersionAdvanceGame" Grid.Column="1" ToolTip="文本框中的内容将会被直接拼合在启动参数的末尾。&#xa;例如，输入 --demo 则会以试玩模式启动游戏。&#xa;&#xa;支持 Minecraft 版本 JSON 中的字符串替换标记，例如 ${library_directory}。&#xa;也支持使用 PCL 的替换标记。&#xa;&#xa;若留空，则跟随全局设置的值。" HintText="跟随全局设置" />
                     <TextBlock VerticalAlignment="Center" Grid.Row="4" HorizontalAlignment="Left" Text="内存管理" Margin="0,0,25,0" />
                     <local:MyComboBox local:SettingService.Key="VersionAdvanceGC" Grid.Row="4" Grid.ColumnSpan="2" Grid.Column="1">
                         <local:MyComboBoxItem Content="跟随全局设置" />
@@ -184,7 +182,7 @@
                         <local:MyComboBoxItem Content="不指定（可自定义）" local:SettingService.Value="4" ToolTip="不自动添加 GC 参数。&#xa;仅当选择此项时，你可以在 “Java 虚拟机参数” 设置中手动添加 GC 参数。" />
                     </local:MyComboBox>
                     <TextBlock Grid.Row="6" VerticalAlignment="Center" HorizontalAlignment="Left" Text="启动前执行命令" Margin="0,0,25,3" />
-                    <local:MyTextBox x:Name="TextAdvanceRun" Grid.Row="6" Grid.ColumnSpan="2" local:SettingService.Key="VersionAdvanceRun" Grid.Column="1" HintText="" Margin="0,0,0,3" ToolTip="该项不会覆盖全局设置：启动时会先执行全局设置的命令，再执行版本设置的命令。&#xa;&#xa;在 MC 启动前执行特定命令或程序，语法与 Windows 的命令提示符一致。&#xa;&#xa;你可以用替换标记来动态改变其内容或实现相对路径，在 更多 → 帮助 中搜索 “替换标记” 以了解用法。例如：&#xa; · &quot;{verpath}test.exe&quot; ：运行版本文件夹下的 test.exe 程序&#xa; · &quot;{java}java.exe&quot; -jar &quot;{verpath}test.jar&quot; ：用 Java 运行版本文件夹下的 test.jar&#xa; · notepad &quot;{verindie}options.txt&quot; ：使用记事本打开该版本的设置文件&#xa;&#xa;涉及路径的操作最好都打上双引号，以避免路径中的空格导致运行失败。&#xa;执行命令时，命令行所在的目录是当前的 .minecraft 文件夹。" />
+                    <local:MyTextBox x:Name="TextAdvanceRun" Grid.Row="6" Grid.ColumnSpan="2" local:SettingService.Key="VersionAdvanceRun" Grid.Column="1" HintText="" Margin="0,0,0,3" ToolTip="该项不会覆盖全局设置：启动时会先执行全局设置的命令，再执行版本设置的命令。&#xa;&#xa;在 MC 启动前执行特定命令或程序，语法与 Windows 的命令提示符一致。&#xa;&#xa;你可以用替换标记来动态改变其内容或实现相对路径。例如：&#xa; · &quot;{verpath}test.exe&quot; ：运行版本文件夹下的 test.exe 程序&#xa; · &quot;{java}java.exe&quot; -jar &quot;{verpath}test.jar&quot; ：用 Java 运行版本文件夹下的 test.jar&#xa; · notepad &quot;{verindie}options.txt&quot; ：使用记事本打开该版本的设置文件&#xa;&#xa;涉及路径的操作最好都打上双引号，以避免路径中的空格导致运行失败。&#xa;执行命令时，命令行所在的目录是当前的 .minecraft 文件夹。" />
                     <local:MyCheckBox Grid.Row="7" Grid.Column="1" x:Name="CheckAdvanceRunWait" local:SettingService.Key="VersionAdvanceRunWait" Visibility="Collapsed" Text="等待命令执行完成后再继续启动" Margin="0,5,0,0" />
                     <StackPanel Margin="0,12,0,4" Grid.Row="8" Grid.ColumnSpan="2" HorizontalAlignment="Left">
                         <local:MyCheckBox Height="28" Text="禁止更新 Mod" x:Name="CheckAdvanceDisableModUpdate" local:SettingService.Key="VersionAdvanceDisableModUpdate" ToolTip="禁止为此版本更新 Mod，以防止整合包玩家误操作" />

@@ -18,6 +18,7 @@ Public NotInheritable Class SduUpdateCore
     Public Const ExeName As String = "SDUCraft-Launcher.exe"
     Public Const ConfigName As String = ExeName & ".config"
     Public Const LatestManifestUrl As String = ReleasesUrl & "/latest/download/" & ManifestName
+    Public Const MirrorPrefix As String = "https://gh-proxy.com/"
     Public Const MaxExeSize As Long = 256L * 1024 * 1024
 
     Public Class ReleaseInfo
@@ -91,21 +92,54 @@ Public NotInheritable Class SduUpdateCore
         End If
     End Sub
 
-    Private Shared Function IsAllowedLocation(Location As Uri) As Boolean
+    Private Shared Function IsAllowedLocation(Location As Uri, Optional AllowMirror As Boolean = False) As Boolean
         Return Location IsNot Nothing AndAlso Location.IsAbsoluteUri AndAlso Location.Scheme = Uri.UriSchemeHttps AndAlso
             Location.IsDefaultPort AndAlso Location.UserInfo = "" AndAlso Location.Fragment = "" AndAlso
             (Location.Host.Equals("github.com", StringComparison.OrdinalIgnoreCase) OrElse
-             Location.Host.EndsWith(".githubusercontent.com", StringComparison.OrdinalIgnoreCase))
+             Location.Host.EndsWith(".githubusercontent.com", StringComparison.OrdinalIgnoreCase) OrElse
+             (AllowMirror AndAlso Location.Host.Equals("gh-proxy.com", StringComparison.OrdinalIgnoreCase) AndAlso
+              Location.AbsolutePath.StartsWith("/https://github.com/" & Repository & "/releases/", StringComparison.OrdinalIgnoreCase)))
     End Function
 
     ''' <summary>独立 HTTP 客户端；不继承游戏下载器的凭据、API Key 或 Cookie。</summary>
     Public Shared Function Download(Url As String, Destination As String, Limit As Long, Token As CancellationToken,
-                             Optional Progress As Action(Of Double) = Nothing, Optional Handler As HttpMessageHandler = Nothing) As Boolean
-        Dim Location As New Uri(Url)
-        Using Client As New HttpClient(If(Handler, New HttpClientHandler With {.AllowAutoRedirect = False, .UseCookies = False}))
+                             Optional Progress As Action(Of Double) = Nothing, Optional Handler As HttpMessageHandler = Nothing,
+                             Optional Validate As Action(Of String) = Nothing) As Boolean
+        Token.ThrowIfCancellationRequested()
+        If Not IsAllowedLocation(New Uri(Url)) Then Throw New InvalidDataException("更新源地址无效。")
+        If File.Exists(Destination) OrElse Directory.Exists(Destination) Then Throw New IOException("更新下载目标已经存在。")
+        Using Client As New HttpClient(If(Handler, New HttpClientHandler With {.AllowAutoRedirect = False, .UseCookies = False}), Handler Is Nothing)
             Client.Timeout = TimeSpan.FromSeconds(30)
+            For Attempt = 0 To 1
+                Token.ThrowIfCancellationRequested()
+                Dim Temporary = Destination & ".download-" & Guid.NewGuid().ToString("N")
+                Try
+                    Dim Location As New Uri(If(Attempt = 0, MirrorPrefix & Url, Url))
+                    If Not DownloadOnce(Client, Location, Temporary, Limit, Token, Progress, Attempt = 0) Then
+                        If Attempt = 0 Then Continue For
+                        Return False
+                    End If
+                    If Validate IsNot Nothing Then Validate(Temporary)
+                    Token.ThrowIfCancellationRequested()
+                    File.Move(Temporary, Destination)
+                    Return True
+                Catch ex As Exception When Attempt = 0 AndAlso Not Token.IsCancellationRequested AndAlso Not TypeOf ex Is ThreadInterruptedException
+                    '镜像请求或校验失败，清理本次部分文件后，仅再尝试一次 GitHub 原地址。
+                Finally
+                    Try
+                        If File.Exists(Temporary) Then File.Delete(Temporary)
+                    Catch
+                    End Try
+                End Try
+            Next
+        End Using
+        Return False
+    End Function
+
+    Private Shared Function DownloadOnce(Client As HttpClient, Location As Uri, Destination As String, Limit As Long,
+                                        Token As CancellationToken, Progress As Action(Of Double), AllowMirror As Boolean) As Boolean
             For Redirect = 0 To 5
-                If Not IsAllowedLocation(Location) Then Throw New InvalidDataException("更新下载被重定向到非允许的地址。")
+                If Not IsAllowedLocation(Location, AllowMirror) Then Throw New InvalidDataException("更新下载被重定向到非允许的地址。")
                 Using Request As New HttpRequestMessage(HttpMethod.Get, Location)
                     Request.Headers.UserAgent.ParseAdd("SDUCraft-Launcher/Updater")
                     Request.Headers.CacheControl = New Headers.CacheControlHeaderValue With {.NoCache = True}
@@ -137,7 +171,6 @@ Public NotInheritable Class SduUpdateCore
                     End Using
                 End Using
             Next
-        End Using
         Throw New IOException("更新下载重定向次数过多。")
     End Function
 
@@ -195,11 +228,19 @@ Public NotInheritable Class SduUpdateCore
     End Sub
 
     Public Shared Sub VerifyPrepared(Plan As InstallPlan)
-        VerifyFile(Path.Combine(Plan.Stage, ExeName), Plan.Release.ExeHash, Plan.Release.ExeSize)
-        VerifyFile(Path.Combine(Plan.Stage, ConfigName), Plan.Release.ConfigHash, Plan.Release.ConfigSize)
-        If AssemblyName.GetAssemblyName(Path.Combine(Plan.Stage, ExeName)).Version <> Plan.Release.Version Then Throw New InvalidDataException("更新程序的内部版本号与更新信息不一致。")
+        VerifyExecutable(Path.Combine(Plan.Stage, ExeName), Plan.Release)
+        VerifyConfiguration(Path.Combine(Plan.Stage, ConfigName), Plan.Release)
+    End Sub
+
+    Public Shared Sub VerifyExecutable(FileName As String, Release As ReleaseInfo)
+        VerifyFile(FileName, Release.ExeHash, Release.ExeSize)
+        If AssemblyName.GetAssemblyName(FileName).Version <> Release.Version Then Throw New InvalidDataException("更新程序的内部版本号与更新信息不一致。")
+    End Sub
+
+    Public Shared Sub VerifyConfiguration(FileName As String, Release As ReleaseInfo)
+        VerifyFile(FileName, Release.ConfigHash, Release.ConfigSize)
         Dim Config As New System.Xml.XmlDocument With {.XmlResolver = Nothing}
-        Using Reader = System.Xml.XmlReader.Create(Path.Combine(Plan.Stage, ConfigName), New System.Xml.XmlReaderSettings With {.DtdProcessing = System.Xml.DtdProcessing.Prohibit, .XmlResolver = Nothing})
+        Using Reader = System.Xml.XmlReader.Create(FileName, New System.Xml.XmlReaderSettings With {.DtdProcessing = System.Xml.DtdProcessing.Prohibit, .XmlResolver = Nothing})
             Config.Load(Reader)
         End Using
         If Config.DocumentElement Is Nothing OrElse Config.DocumentElement.Name <> "configuration" Then Throw New InvalidDataException("更新配置文件无效。")

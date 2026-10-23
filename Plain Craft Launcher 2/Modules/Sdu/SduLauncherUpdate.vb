@@ -40,7 +40,9 @@ Public Module SduLauncherUpdate
         Sub()
             Dim ManifestFile = Path.Combine(Path.GetTempPath(), "sdu-update-" & Guid.NewGuid().ToString("N") & ".json")
             Try
-                If Not SduUpdateCore.Download(SduUpdateCore.LatestManifestUrl, ManifestFile, 256 * 1024, CancellationToken.None) Then
+                Dim ManifestUrl = SduUpdateCore.LatestManifestUrl & "?sdu_check=" & Date.UtcNow.Ticks
+                If Not SduUpdateCore.Download(ManifestUrl, ManifestFile, 256 * 1024, CancellationToken.None,
+                    Validate:=Sub(FileName) SduUpdateCore.ParseManifest(File.ReadAllText(FileName, Encoding.UTF8))) Then
                     If Manual Then Hint("当前尚未发布可自动更新的启动器版本。", HintType.Blue)
                     Return
                 End If
@@ -86,8 +88,10 @@ Public Module SduLauncherUpdate
             Try
                 Dim Token = Task.CreateCancellationToken()
                 If Not SduUpdateCore.Download(Release.AssetBase & SduUpdateCore.ExeName, Path.Combine(Stage, SduUpdateCore.ExeName), Release.ExeSize, Token,
-                    Sub(Value) Task.Progress = Value * 0.9) Then Throw New IOException("发布版本缺少启动器文件。")
-                If Not SduUpdateCore.Download(Release.AssetBase & SduUpdateCore.ConfigName, Path.Combine(Stage, SduUpdateCore.ConfigName), Release.ConfigSize, Token) Then Throw New IOException("发布版本缺少配置文件。")
+                    Sub(Value) Task.Progress = Value * 0.9,
+                    Validate:=Sub(FileName) SduUpdateCore.VerifyExecutable(FileName, Release)) Then Throw New IOException("发布版本缺少启动器文件。")
+                If Not SduUpdateCore.Download(Release.AssetBase & SduUpdateCore.ConfigName, Path.Combine(Stage, SduUpdateCore.ConfigName), Release.ConfigSize, Token,
+                    Validate:=Sub(FileName) SduUpdateCore.VerifyConfiguration(FileName, Release)) Then Throw New IOException("发布版本缺少配置文件。")
                 Token.ThrowIfCancellationRequested()
                 Dim Plan = SduUpdateCore.CreatePlan(Stage, Target, Release)
                 SduUpdateCore.VerifyPrepared(Plan)

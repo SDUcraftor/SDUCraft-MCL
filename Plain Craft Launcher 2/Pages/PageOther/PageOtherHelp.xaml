@@ -5,8 +5,8 @@
         <StackPanel x:Name="PanMain" Margin="25,25,25,20">
             <local:MyCard Title="SDUcraft 帮助中心" Margin="0,0,0,18" HasMouseAnimation="False">
                 <StackPanel Margin="20,44,20,18">
-                    <TextBlock Text="从连接校园网到进入服务器，在这里找到下一步。" FontSize="15" TextWrapping="Wrap" Foreground="{DynamicResource ColorBrush1}" />
-                    <TextBlock Text="山东大学学生 Minecraft 社团 · 常用入口与启动器使用指南" Margin="0,7,0,14" FontSize="12" TextWrapping="Wrap" Foreground="{DynamicResource ColorBrushGray2}" />
+                    <TextBlock Text="前往 SDUcraft 官网获取帮助。" FontSize="15" TextWrapping="Wrap" Foreground="{DynamicResource ColorBrush1}" />
+                    <TextBlock Text="山东大学学生 Minecraft 社团 · 常用入口" Margin="0,7,0,14" FontSize="12" TextWrapping="Wrap" Foreground="{DynamicResource ColorBrushGray2}" />
                     <WrapPanel Margin="-3,0,-3,-6">
                         <local:MyButton Text="文档与指南 ↗" Tag="https://www.sducraft.top/more/doc" Click="OpenHelpButton" Padding="12,0" Height="32" Margin="3,0,3,6" />
                         <local:MyButton Text="皮肤站 ↗" Tag="https://skin.sducraft.cn/" Click="OpenHelpButton" Padding="12,0" Height="32" Margin="3,0,3,6" />
@@ -15,17 +15,6 @@
                     </WrapPanel>
                 </StackPanel>
             </local:MyCard>
-            <local:MySearchBox Margin="0,0,0,12" HintText="搜索校园网、登录、安装、模组更新……" x:Name="SearchBox" />
-            <TextBlock x:Name="LabResults" Margin="2,0,0,12" FontSize="12" Foreground="{DynamicResource ColorBrushGray2}" />
-            <StackPanel x:Name="PanList" />
-            <Border x:Name="PanEmpty" Visibility="Collapsed" Padding="24" CornerRadius="6" Background="{DynamicResource ColorBrushBg1}">
-                <StackPanel>
-                    <TextBlock Text="暂时没有找到相关说明" FontSize="15" Foreground="{DynamicResource ColorBrush1}" />
-                    <TextBlock Text="试试“登录”“校园网”或“更新”，也可以查看官网文档与公告。" Margin="0,8,0,12" TextWrapping="Wrap" Foreground="{DynamicResource ColorBrushGray2}" />
-                    <local:MyTextButton Content="清空搜索，查看全部指南" Click="ClearSearch" HorizontalAlignment="Left" />
-                </StackPanel>
-            </Border>
-            <TextBlock Text="这些使用说明随启动器提供，离线也能查看。服务器信息和活动安排以官网最新公告为准。" Margin="2,6,2,0" FontSize="11" TextWrapping="Wrap" Foreground="{DynamicResource ColorBrushGray2}" />
         </StackPanel>
     </local:MyScrollViewer>
 </local:MyPageRight>

@@ -439,16 +439,7 @@ Public Class FormMain
             End Try
             '上报
             Telemetry("启动")
-            '保留改版说明，介绍本分支的用途和使用方式。
-            If VersionBranchMain = "OpenSource" Then
-                MyMsgBox("欢迎使用 SDUcraft 改版启动器！" & vbCrLf & vbCrLf &
-                         "本版本基于 Plain Craft Launcher (PCL) 开源代码修改，由 SDUcraft 社区维护，并非 PCL 官方版本。" & vbCrLf & vbCrLf &
-                         "• 使用 SDUcraft 皮肤站账号登录。" & vbCrLf &
-                         "• 可在首页及下载页获取、安装 SDUcraft 整合包。" & vbCrLf &
-                         "• 访问校园服务前，请连接山东大学校园网。" & vbCrLf & vbCrLf &
-                         "皮肤站：https://skin.sducraft.cn/",
-                         "SDUcraft 改版说明", "我知道了")
-            End If
+            SduStartupNotice.ShowOnce()
             RunInUi(Sub() FrmLaunchRight.RefreshSduDownloadPanel(), True)
         End Sub, "初始化", ThreadPriority.Lowest)
 

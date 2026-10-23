@@ -102,7 +102,97 @@ Module SduUpdateTests
                 End Function)))
                 Assert(Calls = 2)
             End Sub)
-            For Each Location In New String() {"http://github.com/test", "https://evil.example/test", "https://github.com.evil.example/test", "https://name@github.com/test", "https://github.com:444/test"}
+            Check("mirror success never contacts direct GitHub", Sub()
+                Dim Calls As Integer
+                Assert(Fetch(New FakeHandler(Function(Request, Token)
+                    Calls += 1
+                    Assert(Request.RequestUri.AbsoluteUri = SduUpdateCore.MirrorPrefix & SduUpdateCore.LatestManifestUrl)
+                    Return New HttpResponseMessage(HttpStatusCode.OK) With {.Content = New StringContent("ok")}
+                End Function)))
+                Assert(Calls = 1)
+            End Sub)
+            For Each Failure In New String() {"http", "network", "timeout", "404"}
+                Dim Kind = Failure
+                Check("mirror " & Kind & " failure falls back once", Sub()
+                    Dim Calls As New List(Of String)
+                    Assert(Fetch(New FakeHandler(Function(Request, Token)
+                        Calls.Add(Request.RequestUri.Host)
+                        If Calls.Count = 1 Then
+                            Assert(Request.RequestUri.Host = "gh-proxy.com")
+                            Select Case Kind
+                                Case "network" : Throw New HttpRequestException("mirror unavailable")
+                                Case "timeout" : Throw New TaskCanceledException("mirror timeout")
+                                Case "404" : Return New HttpResponseMessage(HttpStatusCode.NotFound)
+                                Case Else : Return New HttpResponseMessage(HttpStatusCode.ServiceUnavailable)
+                            End Select
+                        End If
+                        Assert(Request.RequestUri.AbsoluteUri = SduUpdateCore.LatestManifestUrl)
+                        Return New HttpResponseMessage(HttpStatusCode.OK) With {.Content = New StringContent("ok")}
+                    End Function)))
+                    Assert(Calls.SequenceEqual(New String() {"gh-proxy.com", "github.com"}))
+                End Sub)
+            Next
+            Check("invalid mirror manifest falls back to verified direct metadata", Sub()
+                Dim Calls As Integer
+                Dim Destination = Path.Combine(Root, "manifest-fallback.json")
+                Assert(SduUpdateCore.Download(SduUpdateCore.LatestManifestUrl, Destination, 4096, CancellationToken.None,
+                    Handler:=New FakeHandler(Function(Request, Token)
+                        Calls += 1
+                        Return New HttpResponseMessage(HttpStatusCode.OK) With {.Content = New StringContent(If(Calls = 1, "<html>proxy error</html>", Manifest().ToString()))}
+                    End Function), Validate:=Sub(Name) SduUpdateCore.ParseManifest(File.ReadAllText(Name))))
+                Assert(Calls = 2 AndAlso SduUpdateCore.ParseManifest(File.ReadAllText(Destination)).VersionText = "1.2.3")
+            End Sub)
+            Check("bad mirror hash falls back and removes partial files", Sub()
+                Dim Destination = Path.Combine(Root, "hash-fallback.exe")
+                Dim Reference = Path.Combine(Root, "hash-reference")
+                File.WriteAllText(Reference, "good")
+                Dim Expected = SduUpdateCore.HashFile(Reference)
+                Dim Calls As Integer
+                Assert(SduUpdateCore.Download(SduUpdateCore.LatestManifestUrl, Destination, 100, CancellationToken.None,
+                    Handler:=New FakeHandler(Function(Request, Token)
+                        Calls += 1
+                        Return New HttpResponseMessage(HttpStatusCode.OK) With {.Content = New StringContent(If(Calls = 1, "bad!", "good"))}
+                    End Function), Validate:=Sub(Name) SduUpdateCore.VerifyFile(Name, Expected, 4)))
+                Assert(Calls = 2 AndAlso File.ReadAllText(Destination) = "good")
+                Assert(Directory.GetFiles(Root, "*.download-*").Length = 0)
+            End Sub)
+            Check("interrupted mirror body starts direct download from empty file", Sub()
+                Dim Calls As Integer
+                Dim Destination = Path.Combine(Root, "body-fallback")
+                Assert(SduUpdateCore.Download(SduUpdateCore.LatestManifestUrl, Destination, 100, CancellationToken.None,
+                    Handler:=New FakeHandler(Function(Request, Token)
+                        Calls += 1
+                        Dim Body As HttpContent = If(Calls = 1, CType(New StreamContent(New BrokenStream()), HttpContent), New StringContent("good"))
+                        Return New HttpResponseMessage(HttpStatusCode.OK) With {.Content = Body}
+                    End Function)))
+                Assert(Calls = 2 AndAlso File.ReadAllText(Destination) = "good")
+                Assert(Directory.GetFiles(Root, "*.download-*").Length = 0)
+            End Sub)
+            Check("user cancellation during mirror prevents GitHub retry", Sub()
+                Using Source As New CancellationTokenSource()
+                    Dim Calls As Integer
+                    Reject(Sub() Fetch(New FakeHandler(Function(Request, Token)
+                        Calls += 1
+                        Source.Cancel()
+                        Token.ThrowIfCancellationRequested()
+                        Return New HttpResponseMessage(HttpStatusCode.OK)
+                    End Function), Token:=Source.Token))
+                    Assert(Calls = 1)
+                End Using
+            End Sub)
+            Check("existing destination is never overwritten or downloaded", Sub()
+                Dim Destination = Path.Combine(Root, "keep-existing")
+                File.WriteAllText(Destination, "keep")
+                Dim Calls As Integer
+                Reject(Sub() SduUpdateCore.Download(SduUpdateCore.LatestManifestUrl, Destination, 100, CancellationToken.None,
+                    Handler:=New FakeHandler(Function(Request, Token)
+                        Calls += 1
+                        Return New HttpResponseMessage(HttpStatusCode.OK)
+                    End Function)))
+                Assert(Calls = 0 AndAlso File.ReadAllText(Destination) = "keep")
+            End Sub)
+            For Each Location In New String() {"http://github.com/test", "https://evil.example/test", "https://github.com.evil.example/test", "https://name@github.com/test", "https://github.com:444/test",
+                "https://gh-proxy.com.evil.example/test", "https://sub.gh-proxy.com/test", "https://gh-proxy.com/https://evil.example/test", "https://gh-proxy.com/https://github.com/other/repo/releases/download/v1/test"}
                 Dim Url = Location
                 Check("reject unsafe redirect " & Url, Sub() Reject(Sub() Fetch(New FakeHandler(Function(Request, Token)
                     Dim Response As New HttpResponseMessage(HttpStatusCode.Redirect)
@@ -230,5 +320,19 @@ Module SduUpdateTests
                 Return False
             End Get
         End Property
+    End Class
+
+    Private Class BrokenStream
+        Inherits HiddenLengthStream
+        Private Reads As Integer
+        Public Sub New()
+            MyBase.New(New Byte() {})
+        End Sub
+        Public Overrides Function ReadAsync(Buffer As Byte(), Offset As Integer, Count As Integer, Token As CancellationToken) As Task(Of Integer)
+            Reads += 1
+            If Reads > 1 Then Throw New IOException("interrupted mirror stream")
+            Array.Copy(System.Text.Encoding.UTF8.GetBytes("bad"), 0, Buffer, Offset, 3)
+            Return Task.FromResult(3)
+        End Function
     End Class
 End Module

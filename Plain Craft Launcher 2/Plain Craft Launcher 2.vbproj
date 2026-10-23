@@ -221,6 +221,7 @@
     <Compile Include="Modules\ThirdParty\DragHelper.vb" />
     <Compile Include="Modules\Sdu\SduDownloadItem.vb" />
     <Compile Include="Modules\Sdu\SduNetworkCheck.vb" />
+    <Compile Include="Modules\Sdu\SduStartupNotice.vb" />
     <Compile Include="Modules\Sdu\SduSkinLogin.vb" />
     <Compile Include="Modules\Sdu\SduUpdateCore.vb" />
     <Compile Include="Modules\Sdu\SduLauncherUpdate.vb" />
