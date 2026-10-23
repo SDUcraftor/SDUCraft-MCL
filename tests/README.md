@@ -1,5 +1,29 @@
 # SDUcraft 安装任务回归
 
+## 固定开启版本隔离
+
+```powershell
+.\tests\Run-SduIsolationTests.ps1
+```
+
+使用 Windows 自带的 .NET Framework VB 编译器，原样提取生产 `McInstance.PathIndie` 属性，验证五种旧全局策略与实例关闭设置均不能改变隔离目录、旧设置迁移和重复读取不反复写入、新实例相互独立、设置保存失败仍保持隔离，以及原有公共 mods 与存档保持不变。Settings 使用内存宿主，文件仅写入 `tests/bin` 下的独立目录，不操作注册表或真实游戏目录。Actions 在 Debug、Release 中均运行该测试。
+
+## 皮肤站唯一登录入口
+
+```powershell
+.\tests\Run-SduSkinLoginTests.ps1
+```
+
+编译生产 `SduSkinLogin.vb`，并原样提取当前登录数据模型、输入路由、校验及实例选择属性，执行 14 项回归：首次使用默认皮肤站、其他站点的凭据清理、旧登录模式迁移、同站账号与令牌保留、重复刷新不反复写设置、拒绝旧登录类型和非指定认证地址、当前表单/缓存账号路由，以及切换实例不恢复其他站点。设置存储、界面输入与日志采用测试宿主；不读写用户注册表、不使用真实账号、不发送网络请求。
+
+## 启动时官网连通性检查
+
+```powershell
+.\tests\Run-SduNetworkCheckTests.ps1
+```
+
+直接编译生产 `SduNetworkCheck.vb`，用替代 HTTP 传输层验证：检查目标固定为 HTTPS 官网、HTTP 成功/重定向/403/503 均视为连通、首次连接失败后重试、持续失败与超时最多尝试两次、仅读取响应头并释放响应、后台启动且每进程仅检查一次、离线提示校园网、在线不弹窗、程序异常不误报网络故障。线程调度、日志与弹窗由计数宿主替代，不发送真实网络请求。Actions 在 Debug、Release 中均运行该测试。
+
 在 Windows、.NET Framework 4.x 运行时和 .NET 8 SDK 环境执行：
 
 ```powershell

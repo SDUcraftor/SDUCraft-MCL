@@ -6,12 +6,22 @@ Public Class PageDownloadLeft
     ''' <summary>
     ''' 当前页面的编号。
     ''' </summary>
-    Public PageID As FormMain.PageSubType = FormMain.PageSubType.DownloadInstall
+    Public PageID As FormMain.PageSubType = FormMain.PageSubType.DownloadSdu
+
+    ''' <summary>旧下载入口统一转到 SDUcraft；保留其余社区资源的页面编号。</summary>
+    Public Shared Function NormalizePageType(ID As FormMain.PageSubType) As FormMain.PageSubType
+        Select Case ID
+            Case FormMain.PageSubType.DownloadInstall, FormMain.PageSubType.DownloadPack
+                Return FormMain.PageSubType.DownloadSdu
+            Case Else
+                Return ID
+        End Select
+    End Function
 
     ''' <summary>
     ''' 勾选事件改变页面。
     ''' </summary>
-    Private Sub PageCheck(sender As FrameworkElement, e As RouteEventArgs) Handles ItemInstall.Check, ItemMod.Check, ItemPack.Check, ItemSdu.Check, ItemResourcePack.Check, ItemShader.Check, ItemDataPack.Check
+    Private Sub PageCheck(sender As FrameworkElement, e As RouteEventArgs) Handles ItemMod.Check, ItemSdu.Check, ItemResourcePack.Check, ItemShader.Check, ItemDataPack.Check
         '尚未初始化控件属性时，sender.Tag 为 Nothing，会导致切换到页面 0
         '若使用 IsLoaded，则会导致模拟点击不被执行（模拟点击切换页面时，控件的 IsLoaded 为 False）
         If sender.Tag IsNot Nothing Then PageChange(Val(sender.Tag))
@@ -19,16 +29,11 @@ Public Class PageDownloadLeft
 
     Public Function PageGet(Optional ID As FormMain.PageSubType = -1)
         If ID = -1 Then ID = PageID
+        ID = NormalizePageType(ID)
         Select Case ID
-            Case FormMain.PageSubType.DownloadInstall
-                If FrmDownloadInstall Is Nothing Then FrmDownloadInstall = New PageDownloadInstall
-                Return FrmDownloadInstall
             Case FormMain.PageSubType.DownloadMod
                 If FrmDownloadMod Is Nothing Then FrmDownloadMod = New PageDownloadMod
                 Return FrmDownloadMod
-            Case FormMain.PageSubType.DownloadPack
-                If FrmDownloadPack Is Nothing Then FrmDownloadPack = New PageDownloadPack
-                Return FrmDownloadPack
             Case FormMain.PageSubType.DownloadSdu
                 If FrmDownloadSdu Is Nothing Then FrmDownloadSdu = New PageDownloadSdu
                 Return FrmDownloadSdu
@@ -50,6 +55,7 @@ Public Class PageDownloadLeft
     ''' 切换现有页面。
     ''' </summary>
     Public Sub PageChange(ID As FormMain.PageSubType)
+        ID = NormalizePageType(ID)
         If PageID = ID Then Return
         AniControlEnabled += 1
         Try
@@ -92,19 +98,10 @@ Public Class PageDownloadLeft
         Refresh(FrmMain.PageCurrentSub)
     End Sub
     Public Sub Refresh(SubType As FormMain.PageSubType)
+        SubType = NormalizePageType(SubType)
         ResourceProject.Cache.Clear()
         ResourceVersion.ProjectFilesCache.Clear()
         Select Case SubType
-            Case FormMain.PageSubType.DownloadInstall
-                DlClientListLoader.Start(IsForceRestart:=True)
-                DlOptiFineListLoader.Start(IsForceRestart:=True)
-                DlForgeListLoader.Start(IsForceRestart:=True)
-                DlNeoForgeListLoader.Start(IsForceRestart:=True)
-                DlLiteLoaderListLoader.Start(IsForceRestart:=True)
-                DlFabricListLoader.Start(IsForceRestart:=True)
-                DlFabricApiLoader.Start(IsForceRestart:=True)
-                DlOptiFabricLoader.Start(IsForceRestart:=True)
-                ItemInstall.Checked = True
             Case FormMain.PageSubType.DownloadMod
                 If FrmDownloadMod IsNot Nothing Then
                     FrmDownloadMod.Content.Storage = New ResourceSearcher.SearchResult
@@ -112,13 +109,6 @@ Public Class PageDownloadLeft
                     FrmDownloadMod.PageLoaderRestart()
                 End If
                 ItemMod.Checked = True
-            Case FormMain.PageSubType.DownloadPack
-                If FrmDownloadPack IsNot Nothing Then
-                    FrmDownloadPack.Content.Storage = New ResourceSearcher.SearchResult
-                    FrmDownloadPack.Content.Page = 0
-                    FrmDownloadPack.PageLoaderRestart()
-                End If
-                ItemPack.Checked = True
             Case FormMain.PageSubType.DownloadSdu
                 If FrmDownloadSdu IsNot Nothing Then FrmDownloadSdu.Refresh()
                 ItemSdu.Checked = True
@@ -147,10 +137,5 @@ Public Class PageDownloadLeft
         Hint("正在刷新……", Log:=False)
     End Sub
 
-    '点击返回
-    Private Sub ItemInstall_Click(sender As Object, e As MouseButtonEventArgs) Handles ItemInstall.Click
-        If Not ItemInstall.Checked Then Return
-        FrmDownloadInstall.ExitSelectPage()
-    End Sub
 
 End Class

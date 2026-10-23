@@ -244,25 +244,6 @@ Public Module ModDownload
             End If
             '返回
             Loader.Output = New DlClientListResult With {.IsOfficial = True, .SourceName = "Mojang 官方源", .Value = Json}
-            'MC 更新提示
-            Static IsHinted As Boolean = False
-            Dim Version As String
-            '快照版
-            Version = Json("latest")("snapshot")
-            If Settings.Get(Of Boolean)("ToolUpdateSnapshot") AndAlso Not Settings.Get(Of String)("ToolUpdateSnapshotLast") = "" AndAlso
-               Settings.Get(Of String)("ToolUpdateSnapshotLast") <> Version AndAlso Not IsHinted Then
-                IsHinted = True
-                McDownloadClientUpdateHint(Version, Json)
-            End If
-            Settings.Set("ToolUpdateSnapshotLast", If(Version, "Nothing"))
-            '正式版
-            Version = Json("latest")("release")
-            If Settings.Get(Of Boolean)("ToolUpdateRelease") AndAlso Not Settings.Get(Of String)("ToolUpdateReleaseLast") = "" AndAlso
-               Settings.Get(Of String)("ToolUpdateReleaseLast") <> Version AndAlso Not IsHinted Then
-                IsHinted = True
-                McDownloadClientUpdateHint(Version, Json)
-            End If
-            Settings.Set("ToolUpdateReleaseLast", Version)
         Catch ex As Exception
             Throw New Exception("Minecraft 官方源版本列表解析失败", ex)
         End Try

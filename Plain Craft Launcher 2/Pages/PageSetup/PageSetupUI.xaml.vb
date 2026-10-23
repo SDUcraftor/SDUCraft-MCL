@@ -33,8 +33,8 @@ Public Class PageSetupUI
         '设置解锁
         If Not RadioLauncherTheme8.IsEnabled Then LabLauncherTheme8Copy.ToolTip = $"累积赞助达到 ¥23.33 后，在爱发电私信发送【土豆 {Identify}】以解锁。" & vbCrLf & "右键打开赞助页面，如果觉得 PCL 做得还不错就支持一下吧 =w=！"
         RadioLauncherTheme8.ToolTip = $"累积赞助达到 ¥23.33 后，在爱发电私信发送【土豆 {Identify}】以解锁"
-        If Not RadioLauncherTheme9.IsEnabled Then LabLauncherTheme9Copy.ToolTip = "· 反馈一个 Bug，在标记为 [完成] 后回复识别码要求解锁（右键打开反馈页面）" & vbCrLf & "· 提交一个 Pull Request 或主页预设，在标记为 [完成] 后回复识别码要求解锁"
-        RadioLauncherTheme9.ToolTip = "· 反馈一个 Bug，在标记为 [完成] 后回复识别码要求解锁" & vbCrLf & "· 提交一个 Pull Request 或主页预设，在标记为 [完成] 后回复识别码要求解锁"
+        If Not RadioLauncherTheme9.IsEnabled Then LabLauncherTheme9Copy.ToolTip = "沿用上游主题的解锁状态。"
+        RadioLauncherTheme9.ToolTip = "沿用上游主题的解锁状态。"
         '极客蓝的处理在 ThemeCheck 中
 
     End Sub
@@ -380,9 +380,6 @@ Refresh:
     Private Sub LabLauncherTheme8Copy_MouseRightButtonUp() Handles LabLauncherTheme8Copy.MouseRightButtonUp, RadioLauncherTheme8.MouseRightButtonUp
         OpenWebsite("https://meloong.com/afd/a/LTCat")
     End Sub
-    Private Sub LabLauncherTheme9Copy_MouseRightButtonUp() Handles LabLauncherTheme9Copy.MouseRightButtonUp, RadioLauncherTheme9.MouseRightButtonUp
-        PageOtherLeft.TryFeedback()
-    End Sub
 
     '主题自定义
     Private Sub RadioLauncherTheme14_Change(sender As Object, e As RouteEventArgs) Handles RadioLauncherTheme14.Changed
@@ -453,10 +450,6 @@ Refresh:
             If FrmSetupUI IsNot Nothing Then
                 FrmSetupUI.CardSwitch.Visibility = If(Not HiddenForceShow AndAlso Settings.Get(Of Boolean)("UiHiddenFunctionHidden"), Visibility.Collapsed, Visibility.Visible)
             End If
-            '版本设置子页面
-            If FrmInstanceLeft IsNot Nothing Then
-                FrmInstanceLeft.ItemModify.Visibility = If(Not HiddenForceShow AndAlso Settings.Get(Of Boolean)("UiHiddenFunctionInstanceModify"), Visibility.Collapsed, Visibility.Visible)
-            End If
             '设置子页面
             If FrmSetupLeft IsNot Nothing Then
                 FrmSetupLeft.ItemLaunch.Visibility = If(Not HiddenForceShow AndAlso Settings.Get(Of Boolean)("UiHiddenSetupLaunch"), Visibility.Collapsed, Visibility.Visible)
@@ -475,15 +468,9 @@ Refresh:
             Dim OtherAvaliableCount As Integer = 0
             If Not Settings.Get(Of Boolean)("UiHiddenOtherHelp") Then OtherAvaliableCount += 1
             If Not Settings.Get(Of Boolean)("UiHiddenOtherAbout") Then OtherAvaliableCount += 1
-            If Not Settings.Get(Of Boolean)("UiHiddenOtherTest") Then OtherAvaliableCount += 1
-            If Not Settings.Get(Of Boolean)("UiHiddenOtherFeedback") Then OtherAvaliableCount += 1
-            If Not Settings.Get(Of Boolean)("UiHiddenOtherVote") Then OtherAvaliableCount += 1
             If FrmOtherLeft IsNot Nothing Then
                 FrmOtherLeft.ItemHelp.Visibility = If(Not HiddenForceShow AndAlso Settings.Get(Of Boolean)("UiHiddenOtherHelp"), Visibility.Collapsed, Visibility.Visible)
-                FrmOtherLeft.ItemFeedback.Visibility = If(Not HiddenForceShow AndAlso Settings.Get(Of Boolean)("UiHiddenOtherFeedback"), Visibility.Collapsed, Visibility.Visible)
-                FrmOtherLeft.ItemVote.Visibility = If(Not HiddenForceShow AndAlso Settings.Get(Of Boolean)("UiHiddenOtherVote"), Visibility.Collapsed, Visibility.Visible)
                 FrmOtherLeft.ItemAbout.Visibility = If(Not HiddenForceShow AndAlso Settings.Get(Of Boolean)("UiHiddenOtherAbout"), Visibility.Collapsed, Visibility.Visible)
-                FrmOtherLeft.ItemTest.Visibility = If(Not HiddenForceShow AndAlso Settings.Get(Of Boolean)("UiHiddenOtherTest"), Visibility.Collapsed, Visibility.Visible)
                 '隐藏左边选择卡
                 FrmOtherLeft.PanItem.Visibility = If(OtherAvaliableCount < 2 AndAlso Not HiddenForceShow, Visibility.Collapsed, Visibility.Visible)
             End If
@@ -493,7 +480,7 @@ Refresh:
                 ElseIf Not Settings.Get(Of Boolean)("UiHiddenOtherAbout") Then
                     FrmMain.BtnTitleSelect4.Text = "关于"
                 Else
-                    FrmMain.BtnTitleSelect4.Text = "百宝箱"
+                    FrmMain.BtnTitleSelect4.Text = "帮助"
                 End If
             Else
                 FrmMain.BtnTitleSelect4.Text = "更多"
@@ -539,53 +526,17 @@ Refresh:
         End If
     End Sub
     Private Sub HiddenOtherMain() Handles CheckHiddenPageOther.Change
-        '更多主页面
         If CheckHiddenPageOther.Checked Then
-            '开启
             CheckHiddenOtherAbout.Checked = True
-            CheckHiddenOtherTest.Checked = True
-            CheckHiddenOtherFeedback.Checked = True
-            CheckHiddenOtherVote.Checked = True
             CheckHiddenOtherHelp.Checked = True
-        Else
-            '关闭
-            If Settings.Get(Of Boolean)("UiHiddenOtherHelp") AndAlso Settings.Get(Of Boolean)("UiHiddenOtherAbout") AndAlso Settings.Get(Of Boolean)("UiHiddenOtherTest") AndAlso
-                Settings.Get(Of Boolean)("UiHiddenOtherVote") AndAlso Settings.Get(Of Boolean)("UiHiddenOtherFeedback") Then
-                CheckHiddenOtherAbout.Checked = False
-                CheckHiddenOtherTest.Checked = False
-                CheckHiddenOtherFeedback.Checked = False
-                CheckHiddenOtherVote.Checked = False
-                CheckHiddenOtherHelp.Checked = False
-            End If
-        End If
-    End Sub
-    Private Sub HiddenOtherSub(sender As Object, user As Boolean) Handles CheckHiddenOtherHelp.Change, CheckHiddenOtherAbout.Change, CheckHiddenOtherTest.Change
-        '更多子页面（有具体内容的）
-        If Settings.Get(Of Boolean)("UiHiddenOtherHelp") AndAlso Settings.Get(Of Boolean)("UiHiddenOtherAbout") AndAlso Settings.Get(Of Boolean)("UiHiddenOtherTest") Then
-            '已被全部隐藏
-            CheckHiddenPageOther.Checked = True
-        Else
-            '未被全部隐藏
-            CheckHiddenPageOther.Checked = False
-        End If
-        '修改无具体内容的项
-        If Not user Then Return
-        If Settings.Get(Of Boolean)("UiHiddenOtherHelp") AndAlso Settings.Get(Of Boolean)("UiHiddenOtherAbout") AndAlso Settings.Get(Of Boolean)("UiHiddenOtherTest") Then
-            CheckHiddenOtherFeedback.Checked = True
-            CheckHiddenOtherVote.Checked = True
-        End If
-    End Sub
-    Private Sub HiddenOtherNet(sender As Object, user As Boolean) Handles CheckHiddenOtherFeedback.Change, CheckHiddenOtherVote.Change
-        '更多子页面（无具体内容的）
-        If Not user Then Return
-        If Settings.Get(Of Boolean)("UiHiddenOtherHelp") AndAlso Settings.Get(Of Boolean)("UiHiddenOtherAbout") AndAlso Settings.Get(Of Boolean)("UiHiddenOtherTest") AndAlso
-            (Not Settings.Get(Of Boolean)("UiHiddenOtherFeedback") OrElse Not Settings.Get(Of Boolean)("UiHiddenOtherVote")) Then
+        ElseIf Settings.Get(Of Boolean)("UiHiddenOtherHelp") AndAlso Settings.Get(Of Boolean)("UiHiddenOtherAbout") Then
             CheckHiddenOtherAbout.Checked = False
-            CheckHiddenOtherTest.Checked = False
             CheckHiddenOtherHelp.Checked = False
         End If
     End Sub
-
+    Private Sub HiddenOtherSub() Handles CheckHiddenOtherHelp.Change, CheckHiddenOtherAbout.Change
+        CheckHiddenPageOther.Checked = Settings.Get(Of Boolean)("UiHiddenOtherHelp") AndAlso Settings.Get(Of Boolean)("UiHiddenOtherAbout")
+    End Sub
     '警告提示
     Private Sub HiddenHint(sender As Object, user As Boolean) Handles CheckHiddenFunctionHidden.Change, CheckHiddenPageSetup.Change, CheckHiddenSetupUI.Change
         If AniControlEnabled = 0 AndAlso sender.Checked Then Hint("按 F12 即可暂时关闭功能隐藏设置。千万别忘了，要不然设置就改不回来了……")

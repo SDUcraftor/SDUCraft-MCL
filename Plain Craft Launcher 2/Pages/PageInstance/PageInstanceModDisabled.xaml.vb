@@ -1,7 +1,7 @@
 Public Class PageInstanceModDisabled
 
     Private Sub BtnDownload_Click(sender As Object, e As EventArgs) Handles BtnDownload.Click
-        FrmMain.PageChange(FormMain.PageType.Download, FormMain.PageSubType.DownloadInstall)
+        FrmMain.PageChange(FormMain.PageType.Download, FormMain.PageSubType.DownloadSdu)
     End Sub
     Private Sub BtnVersion_Click(sender As Object, e As EventArgs) Handles BtnVersion.Click
         FrmMain.PageChange(FormMain.PageType.Launch) '在版本选择页面选定版本的时候只会返回一层，因此如果不先锚定 Launch，在选择版本后会回退到版本设置的这个页面

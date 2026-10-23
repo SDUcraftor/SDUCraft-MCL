@@ -232,6 +232,7 @@ NextInner:
 #Region "预检测"
 
     Private Sub McLaunchPrecheck()
+        SduSkinLogin.EnsureConfiguration(McInstanceSelected)
         If Settings.Get(Of Boolean)("SystemDebugDelay") Then Thread.Sleep(RandomInteger(100, 2000))
         '检查路径
         If McInstanceSelected.PathIndie.Contains("!") OrElse McInstanceSelected.PathIndie.Contains(";") Then Throw New Exception("游戏路径中不可包含 ! 或 ;（" & McInstanceSelected.PathIndie & "）")
@@ -244,55 +245,13 @@ NextInner:
         Dim CheckResult As String = ""
         RunInUiWait(Sub() CheckResult = McLoginAble(McLoginInput()))
         If CheckResult <> "" Then Throw New ArgumentException(CheckResult)
-        '求赞助
-        If BuildType = BuildTypes.Release AndAlso CurrentLaunchOptions?.SaveBatch Is Nothing Then '保存脚本时不提示
-            RunInNewThread(
-            Sub()
-                Select Case Settings.Get(Of Integer)("SystemLaunchCount")
-                    Case 10, 20, 40, 60, 80, 100, 120, 150, 200, 250, 300, 350, 400, 500, 600, 700, 800, 900, 1000, 1200, 1400, 1600, 1800, 2000
-                        If MyMsgBox("PCL 已经为你启动了 " & Settings.Get(Of Integer)("SystemLaunchCount") & " 次游戏啦！" & vbCrLf &
-                                    "如果 PCL 还算好用的话，能不能考虑赞助一下 PCL……" & vbCrLf &
-                                    "如果没有大家的支持，PCL 很难在免费、无任何广告的情况下维持数年的更新（磕头）……！",
-                                    Settings.Get(Of Integer)("SystemLaunchCount") & " 次启动！", "支持 PCL！", "但是我拒绝") = 1 Then
-                            OpenWebsite("https://meloong.com/afd/a/LTCat")
-                        End If
-                End Select
-            End Sub, "Donate")
-        End If
-        '正版购买提示
-        If CurrentLaunchOptions?.SaveBatch Is Nothing AndAlso '保存脚本时不提示
-           Not Settings.Get(Of Boolean)("HintBuy") AndAlso Settings.Get(Of McLoginType)("LoginType") <> McLoginType.Ms Then
-            If Globalization.CultureInfo.CurrentCulture.Name.StartsWithF("zh") OrElse Globalization.CultureInfo.CurrentUICulture.Name.StartsWithF("zh") Then '中文？
-                RunInNewThread(
-                Sub()
-                    Select Case Settings.Get(Of Integer)("SystemLaunchCount")
-                        Case 3, 8, 15, 30, 50, 70, 90, 110, 130, 180, 220, 280, 330, 380, 450, 550, 660, 750, 880, 950, 1100, 1300, 1500, 1700, 1900
-                            If MyMsgBox("你已经启动了 " & Settings.Get(Of Integer)("SystemLaunchCount") & " 次 Minecraft 啦！" & vbCrLf &
-                                "如果觉得 Minecraft 还不错，可以购买正版支持一下，毕竟开发游戏也真的很不容易……不要一直白嫖啦。" & vbCrLf & vbCrLf &
-                                "在登录一次正版账号后，就不会再出现这个提示了！",
-                                "考虑一下正版？", "支持正版游戏！", "下次一定") = 1 Then
-                                OpenWebsite("https://www.xbox.com/zh-cn/games/store/minecraft-java-bedrock-edition-for-pc/9nxp44l49shj")
-                            End If
-                    End Select
-                End Sub, "Buy Minecraft")
-            ElseIf Settings.Get(Of McLoginType)("LoginType") = McLoginType.Legacy Then
-                Select Case MyMsgBox("你必须先登录正版账号，才能进行离线登录！", "正版验证", "购买正版", "试玩", "返回",
-                    Button1Action:=Sub() OpenWebsite("https://www.xbox.com/zh-cn/games/store/minecraft-java-bedrock-edition-for-pc/9nxp44l49shj"))
-                    Case 2
-                        Hint("游戏将以试玩模式启动！", HintType.Red)
-                        CurrentLaunchOptions.ExtraGameArgs.Add("--demo")
-                    Case 3
-                        Throw New OperationCanceledException
-                End Select
-            End If
-        End If
     End Sub
 
 #End Region
 
 #Region "主登录模块"
 
-    '登录方式
+    '旧枚举数值仅用于识别历史配置；本分支只保留 Auth 登录流程。
     Public Enum McLoginType
         Legacy = 0
         Nide = 2
@@ -330,7 +289,7 @@ NextInner:
         ''' </summary>
         Public Token As String
         ''' <summary>
-        ''' 登录方式的描述字符串，如 “正版”、“统一通行证”。
+        ''' 登录方式的描述字符串。
         ''' </summary>
         Public Description As String
         ''' <summary>
@@ -345,48 +304,6 @@ NextInner:
             Return (UserName & Password & BaseUrl & Token & Type).GetStableHashCode() Mod Integer.MaxValue
         End Function
 
-    End Class
-    Public Class McLoginMs
-        Inherits McLoginData
-
-        ''' <summary>
-        ''' 缓存的 OAuth Refresh Token。若没有则为空字符串。
-        ''' </summary>
-        Public OAuthRefreshToken As String = ""
-        Public AccessToken As String = ""
-        Public Uuid As String = ""
-        Public UserName As String = ""
-        Public ProfileJson As String = ""
-
-        Public Sub New()
-            Type = McLoginType.Ms
-        End Sub
-        Public Overrides Function GetHashCode() As Integer
-            '不能使用全部信息，这俩就足以在登录输入时确保是同一个用户了
-            Return (OAuthRefreshToken & UserName).GetStableHashCode() Mod Integer.MaxValue
-        End Function
-    End Class
-    Public Class McLoginLegacy
-        Inherits McLoginData
-        ''' <summary>
-        ''' 登录用户名。
-        ''' </summary>
-        Public UserName As String
-        ''' <summary>
-        ''' 皮肤种类。
-        ''' </summary>
-        Public SkinType As Integer
-        ''' <summary>
-        ''' 若采用正版皮肤，则为该皮肤名。
-        ''' </summary>
-        Public SkinName As String
-
-        Public Sub New()
-            Type = McLoginType.Legacy
-        End Sub
-        Public Overrides Function GetHashCode() As Integer
-            Return (UserName & SkinType & SkinName & Type).GetStableHashCode() Mod Integer.MaxValue
-        End Function
     End Class
 
     '登录返回结果
@@ -406,104 +323,35 @@ NextInner:
     ''' 根据登录信息获取玩家的 MC 用户名。如果无法获取则返回 Nothing。
     ''' </summary>
     Public Function McLoginName() As String
-        '根据当前登录方式优先返回
-        Select Case Settings.Get(Of McLoginType)("LoginType")
-            Case McLoginType.Ms
-                If Settings.Get(Of String)("CacheMsV2Name") <> "" Then Return Settings.Get(Of String)("CacheMsV2Name")
-            Case McLoginType.Legacy
-                If Settings.Get(Of String)("LoginLegacyName") <> "" Then Return Settings.Get(Of String)("LoginLegacyName").ToString.BeforeFirst("¨")
-            Case McLoginType.Nide
-                If Settings.Get(Of String)("CacheNideName") <> "" Then Return Settings.Get(Of String)("CacheNideName")
-            Case McLoginType.Auth
-                If Settings.Get(Of String)("CacheAuthName") <> "" Then Return Settings.Get(Of String)("CacheAuthName")
-        End Select
-        '查找所有可能的项
-        If Settings.Get(Of String)("CacheMsV2Name") <> "" Then Return Settings.Get(Of String)("CacheMsV2Name")
-        If Settings.Get(Of String)("CacheNideName") <> "" Then Return Settings.Get(Of String)("CacheNideName")
-        If Settings.Get(Of String)("CacheAuthName") <> "" Then Return Settings.Get(Of String)("CacheAuthName")
-        If Settings.Get(Of String)("LoginLegacyName") <> "" Then Return Settings.Get(Of String)("LoginLegacyName").ToString.BeforeFirst("¨")
-        Return Nothing
+        Dim Name = Settings.Get(Of String)("CacheAuthName")
+        Return If(Name = "", Nothing, Name)
     End Function
     ''' <summary>
     ''' 当前是否可以进行登录。若不可以则会返回错误原因。
     ''' </summary>
     Public Function McLoginAble() As String
-        Select Case Settings.Get(Of McLoginType)("LoginType")
-            Case McLoginType.Ms
-                If Settings.Get(Of String)("CacheMsV2OAuthRefresh") = "" Then
-                    Return FrmLoginMs.IsVaild()
-                Else
-                    Return ""
-                End If
-            Case McLoginType.Legacy
-                Return FrmLoginLegacy.IsVaild()
-            Case McLoginType.Nide
-                If Settings.Get(Of String)("CacheNideAccess") = "" Then
-                    Return FrmLoginNide.IsVaild()
-                Else
-                    Return ""
-                End If
-            Case McLoginType.Auth
-                If Settings.Get(Of String)("CacheAuthAccess") = "" Then
-                    Return FrmLoginAuth.IsVaild()
-                Else
-                    Return ""
-                End If
-            Case Else
-                Return "未知的登录方式"
-        End Select
+        SduSkinLogin.EnsureConfiguration(McInstanceSelected)
+        If Settings.Get(Of String)("CacheAuthAccess") <> "" Then Return ""
+        Return If(FrmLoginAuth Is Nothing, "请先登录 SDUcraft 皮肤站账号。", FrmLoginAuth.IsVaild())
     End Function
     ''' <summary>
     ''' 登录输入是否可以进行登录。若不可以则会返回错误原因。
     ''' </summary>
     Public Function McLoginAble(LoginData As McLoginData) As String
-        Select Case LoginData.Type
-            Case McLoginType.Ms
-                Return PageLoginMs.IsVaild(LoginData)
-            Case McLoginType.Legacy
-                Return PageLoginLegacy.IsVaild(LoginData)
-            Case McLoginType.Nide
-                Return PageLoginNide.IsVaild(LoginData)
-            Case McLoginType.Auth
-                Return PageLoginAuth.IsVaild(LoginData)
-            Case Else
-                Return "未知的登录方式"
-        End Select
+        Dim ServerData = TryCast(LoginData, McLoginServer)
+        If ServerData Is Nothing Then Return "此启动器仅支持 SDUcraft 皮肤站登录。"
+        Dim ErrorMessage = SduSkinLogin.ValidateLogin(CInt(ServerData.Type), ServerData.Token, ServerData.BaseUrl)
+        If ErrorMessage <> "" Then Return ErrorMessage
+        Return PageLoginAuth.IsVaild(ServerData)
     End Function
 
     '登录主模块加载器
     Public McLoginLoader As New LoaderTask(Of McLoginData, McLoginResult)("登录", AddressOf McLoginStart, AddressOf McLoginInput, ThreadPriority.BelowNormal) With
         {.ReloadTimeout = 1, .ProgressWeight = 15, .Block = False}
     Public Function McLoginInput() As McLoginData
-        Dim LoginData As McLoginData = Nothing
-        Dim LoginType = Settings.Get(Of McLoginType)("LoginType")
-        Try
-            Select Case LoginType
-                Case McLoginType.Legacy
-                    LoginData = PageLoginLegacy.GetLoginData()
-                Case McLoginType.Ms
-                    If Settings.Get(Of String)("CacheMsV2OAuthRefresh") = "" Then
-                        LoginData = PageLoginMs.GetLoginData()
-                    Else
-                        LoginData = PageLoginMsSkin.GetLoginData()
-                    End If
-                Case McLoginType.Nide
-                    If Settings.Get(Of String)("CacheNideAccess") = "" Then
-                        LoginData = PageLoginNide.GetLoginData()
-                    Else
-                        LoginData = PageLoginNideSkin.GetLoginData()
-                    End If
-                Case McLoginType.Auth
-                    If Settings.Get(Of String)("CacheAuthAccess") = "" Then
-                        LoginData = PageLoginAuth.GetLoginData()
-                    Else
-                        LoginData = PageLoginAuthSkin.GetLoginData()
-                    End If
-            End Select
-            Return LoginData
-        Catch ex As Exception
-            Throw New Exception($"获取登录输入信息失败（{LoginType}）", ex)
-        End Try
+        SduSkinLogin.EnsureConfiguration(McInstanceSelected)
+        If Settings.Get(Of String)("CacheAuthAccess") = "" Then Return PageLoginAuth.GetLoginData()
+        Return PageLoginAuthSkin.GetLoginData()
     End Function
     Private Sub McLoginStart(Data As LoaderTask(Of McLoginData, McLoginResult))
         McLaunchLog("登录加载已开始")
@@ -511,17 +359,7 @@ NextInner:
         Dim CheckResult As String = McLoginAble(Data.Input)
         If Not CheckResult = "" Then Throw New ArgumentException(CheckResult)
         '获取对应加载器
-        Dim Loader As LoaderBase = Nothing
-        Select Case Data.Input.Type
-            Case McLoginType.Ms
-                Loader = McLoginMsLoader
-            Case McLoginType.Legacy
-                Loader = McLoginLegacyLoader
-            Case McLoginType.Nide
-                Loader = McLoginNideLoader
-            Case McLoginType.Auth
-                Loader = McLoginAuthLoader
-        End Select
+        Dim Loader As LoaderBase = McLoginAuthLoader
         '尝试加载
         Loader.WaitForExit(Data.Input, McLoginLoader, Data.IsForceRestarting)
         Data.Output = CType(Loader, Object).Output
@@ -533,83 +371,14 @@ NextInner:
 #Region "分方式登录模块"
 
     '各个登录方式的主对象与输入构造
-    Public McLoginMsLoader As New LoaderTask(Of McLoginMs, McLoginResult)("Loader Login Ms", AddressOf McLoginMsStart) With {.ReloadTimeout = 1}
-    Public McLoginLegacyLoader As New LoaderTask(Of McLoginLegacy, McLoginResult)("Loader Login Legacy", AddressOf McLoginLegacyStart)
-    Public McLoginNideLoader As New LoaderTask(Of McLoginServer, McLoginResult)("Loader Login Nide", AddressOf McLoginServerStart) With {.ReloadTimeout = 1000 * 60 * 10}
     Public McLoginAuthLoader As New LoaderTask(Of McLoginServer, McLoginResult)("Loader Login Auth", AddressOf McLoginServerStart) With {.ReloadTimeout = 1000 * 60 * 10}
 
     '主加载函数，返回所有需要的登录信息
-    Private Sub McLoginMsStart(Data As LoaderTask(Of McLoginMs, McLoginResult))
-        Dim Input As McLoginMs = Data.Input
-        Dim LogUsername As String = Input.UserName
-        McLaunchLog("登录方式：正版（" & If(LogUsername = "", "尚未登录", LogUsername) & "）")
-        Data.Progress = 0.05
-        '检查是否已经登录完成
-        Dim ExpiresAt = Settings.Get(Of Long)("CacheMsV2Expires")
-        If Not Data.IsForceRestarting AndAlso '不要求强行重启
-           ExpiresAt > 0 AndAlso ExpiresAt > ToUnixTimestampUtc(Date.UtcNow) AndAlso 'AccessToken 尚未过期
-           Input.UserName = Settings.Get(Of String)("CacheMsV2Name") Then
-            Data.Output = New McLoginResult With {
-                .Name = Input.UserName, .Type = "Microsoft",
-                .AccessToken = Settings.Get(Of String)("CacheMsV2Access"),
-                .Uuid = Settings.Get(Of String)("CacheMsV2Uuid"),
-                .ClientToken = Settings.Get(Of String)("CacheMsV2Uuid"),
-                .ProfileJson = Settings.Get(Of String)("CacheMsV2ProfileJson")
-            }
-            McLaunchLog("无需登录，AccessToken 尚未过期")
-            GoTo SkipLogin
-        End If
-        '尝试登录
-        Dim OAuthTokens As (OAuthAccessToken As String, OAuthRefreshToken As String)
-        If Input.OAuthRefreshToken = "" Then
-            '无 RefreshToken
-Relogin:
-            OAuthTokens = MsLoginStep1New(Data)
-        Else
-            '有 RefreshToken
-            OAuthTokens = MsLoginStep1Refresh(Input.OAuthRefreshToken)
-            If OAuthTokens.OAuthAccessToken = "Relogin" Then GoTo Relogin '要求重新打开登录网页认证
-        End If
-        If Data.IsCanceled Then Throw New OperationCanceledException
-        Data.Progress = 0.25
-        If Data.IsCanceled Then Throw New OperationCanceledException
-        Dim OAuthAccessToken As String = OAuthTokens.OAuthAccessToken
-        Dim OAuthRefreshToken As String = OAuthTokens.OAuthRefreshToken
-        Dim XBLToken As String = MsLoginStep2(OAuthAccessToken)
-        Data.Progress = 0.4
-        If Data.IsCanceled Then Throw New OperationCanceledException
-        Dim Tokens = MsLoginStep3(XBLToken)
-        Data.Progress = 0.55
-        If Data.IsCanceled Then Throw New OperationCanceledException
-        Dim LoginResult = MsLoginStep4(Tokens)
-        ExpiresAt = LoginResult.ExpiresAt
-        Data.Progress = 0.7
-        If Data.IsCanceled Then Throw New OperationCanceledException
-        MsLoginStep5(LoginResult.AccessToken)
-        Data.Progress = 0.85
-        If Data.IsCanceled Then Throw New OperationCanceledException
-        Dim Result = MsLoginStep6(LoginResult.AccessToken)
-        Data.Progress = 0.98
-        '输出登录结果
-        Settings.Set("CacheMsV2OAuthRefresh", OAuthRefreshToken)
-        Settings.Set("CacheMsV2Access", LoginResult.AccessToken)
-        Settings.Set("CacheMsV2Uuid", Result.UUID)
-        Settings.Set("CacheMsV2Name", Result.UserName)
-        Settings.Set("CacheMsV2ProfileJson", Result.ProfileJson)
-        Settings.Set("CacheMsV2Expires", LoginResult.ExpiresAt)
-        Dim MsJson As JObject = Settings.Get(Of String)("LoginMsJson").DeserializeJson()
-        MsJson.Remove(Input.UserName) '如果更改了玩家名……
-        MsJson(Result.UserName) = OAuthRefreshToken
-        Settings.Set("LoginMsJson", MsJson.ToString(Newtonsoft.Json.Formatting.None))
-        Data.Output = New McLoginResult With {.AccessToken = LoginResult.AccessToken, .Name = Result.UserName, .Uuid = Result.UUID, .Type = "Microsoft", .ClientToken = Result.UUID, .ProfileJson = Result.ProfileJson}
-        '结束
-SkipLogin:
-        McLaunchLog($"微软登录结束，AccessToken 将在 {DateTimeOffset.FromUnixTimeSeconds(ExpiresAt).LocalDateTime} 过期")
-        Settings.Set("HintBuy", True) '关闭正版购买提示
-        If ThemeUnlock(10, False) Then MyMsgBox("感谢你对正版游戏的支持！" & vbCrLf & "隐藏主题 跳票红 已解锁！", "提示")
-    End Sub
+
     Private Sub McLoginServerStart(Data As LoaderTask(Of McLoginServer, McLoginResult))
         Dim Input As McLoginServer = Data.Input
+        Dim ErrorMessage = McLoginAble(Input)
+        If ErrorMessage <> "" Then Throw New ArgumentException(ErrorMessage)
         Dim NeedRefresh As Boolean = False, WasRefreshed As Boolean = False
         McLaunchLog("登录方式：" & Input.Description)
         Data.Progress = 0.05
@@ -628,7 +397,7 @@ SkipLogin:
                 GoTo LoginFinish
             Catch ex As Exception
                 Logger.Warn(ex, "验证登录失败")
-                If ex.IsBadNetwork Then Throw New Exception("$登录失败：你的网络环境不佳，导致难以连接到海外服务器。" & vbCrLf & "请稍后再试，或使用加速器、VPN 改善网络环境。")
+                If ex.IsBadNetwork Then Throw New Exception("$登录失败：无法连接到 SDUcraft 皮肤站。" & vbCrLf & "请确认已连接校园网并且皮肤站可访问，然后重试。")
             End Try
             Data.Progress = 0.25
             '尝试刷新登录
@@ -682,25 +451,7 @@ LoginFinish:
             Settings.Set("Login" & Input.Token & "Pass", "")
         End Try
     End Sub
-    Private Sub McLoginLegacyStart(Data As LoaderTask(Of McLoginLegacy, McLoginResult))
-        Dim Input As McLoginLegacy = Data.Input
-        McLaunchLog("登录方式：离线（" & Input.UserName & "）")
-        Data.Progress = 0.1
-        With Data.Output
-            .Name = Input.UserName
-            .Uuid = McLoginLegacyUuidWithCustomSkin(Input.UserName, Input.SkinType, Input.SkinName)
-            .Type = "Legacy"
-        End With
-        '将结果扩展到所有项目中
-        Data.Output.AccessToken = Data.Output.Uuid
-        Data.Output.ClientToken = Data.Output.Uuid
-        '保存启动记录
-        Dim Names As New List(Of String)
-        If Not Settings.Get(Of String)("LoginLegacyName") = "" Then Names.AddRange(Settings.Get(Of String)("LoginLegacyName").ToString.Split("¨"))
-        Names.Remove(Input.UserName)
-        Names.Insert(0, Input.UserName)
-        Settings.Set("LoginLegacyName", Names.Join("¨"c))
-    End Sub
+
 
     'Server 登录：三种验证方式的请求
     Private Sub McLoginRequestValidate(ByRef Data As LoaderTask(Of McLoginServer, McLoginResult))
@@ -845,8 +596,7 @@ LoginFinish:
                         Select Case Data.Input.Type
                             Case McLoginType.Auth
                                 RunInUi(AddressOf PageLoginAuthSkin.ExitLogin)
-                            Case McLoginType.Nide
-                                RunInUi(AddressOf PageLoginNideSkin.ExitLogin)
+
                         End Select
                     End If
                     Throw New Exception("$登录失败：" & ErrorMessage)
@@ -860,15 +610,9 @@ LoginFinish:
                                             " - 输入的账号或密码错误。" & vbCrLf &
                                             " - 登录尝试过于频繁，导致被暂时屏蔽。请不要操作，等待 10 分钟后再试。" & vbCrLf &
                                             " - 只注册了账号，但没有在皮肤站新建角色。")
-                    Case McLoginType.Nide
-                        Throw New Exception("$登录失败，以下为可能的原因：" & vbCrLf &
-                                            " - 输入的账号或密码错误。" & vbCrLf &
-                                            " - 密码错误次数过多，导致被暂时屏蔽。请不要操作，等待 10 分钟后再试。" & vbCrLf &
-                                            If(Data.Input.UserName.Contains("@"), "", " - 登录账号应为邮箱或统一通行证账号，而非游戏角色 ID。" & vbCrLf) &
-                                            " - 只注册了账号，但没有加入对应服务器。")
                 End Select
             ElseIf ex.IsBadNetwork() Then
-                Throw New Exception("$登录失败：你的网络环境不佳，导致难以连接到海外服务器。" & vbCrLf & "请稍后再试，或使用加速器、VPN 改善网络环境。")
+                Throw New Exception("$登录失败：无法连接到 SDUcraft 皮肤站。" & vbCrLf & "请确认已连接校园网并且皮肤站可访问，然后重试。")
             ElseIf ex.Message.StartsWithF("$") Then
                 Throw
             Else
@@ -876,306 +620,6 @@ LoginFinish:
             End If
             Return False
         End Try
-    End Function
-
-    '微软登录步骤 1，原始登录：获取 DeviceCode 并开启登录网页
-    Private Function MsLoginStep1New(Data As LoaderTask(Of McLoginMs, McLoginResult)) As (OAuthAccessToken As String, OAuthRefreshToken As String)
-        '参考：https://learn.microsoft.com/zh-cn/entra/identity-platform/v2-oauth2-device-code
-
-        '未配置 Client ID 时给出明确指引，而不是让用户看到微软返回的晦涩错误
-        If OAuthClientId = "" Then
-            MyMsgBox($"尚未配置微软登录 Client ID，无法进行正版登录。{vbCrLf}免费申请（约 5 分钟）：{vbCrLf}" &
-                     $"1. 打开 portal.azure.com 并登录你的微软账号{Environment.NewLine}" &
-                     $"2. 搜索并进入「应用注册」(App registrations)，点击「新注册」{Environment.NewLine}" &
-                     $"3. 名称随意（如 SDUCraft-MCL），受支持的账户类型选择「仅个人 Microsoft 账户」{Environment.NewLine}" &
-                     $"4. 重定向 URI 选「公共客户端/本机(移动和桌面)」，填 https://login.microsoftonline.com/common/oauth2/nativeclient{Environment.NewLine}" &
-                     $"5. 注册后在「身份验证」开启「允许公共客户端流」并保存{Environment.NewLine}" &
-                     $"6. 复制「应用程序(客户端) ID」，填入 Modules\ModSecret.vb 的 OAuthClientId，或设置环境变量 PCL_MS_CLIENT_ID 后重启启动器",
-                     "正版登录未配置", "我知道了", IsWarn:=True)
-            Throw New OperationCanceledException
-        End If
-
-        '初始请求
-Retry:
-        McLaunchLog("开始微软登录步骤 1/6（原始登录）")
-        Dim PrepareJson As JObject = NetRequestByClientRetry("https://login.microsoftonline.com/consumers/oauth2/v2.0/devicecode", HttpMethod.Post,
-            Content:=$"client_id={OAuthClientId}&tenant=/consumers&scope=XboxLive.signin%20offline_access",
-            ContentType:="application/x-www-form-urlencoded", RequireJson:=True).DeserializeJson()
-        McLaunchLog("网页登录地址：" & PrepareJson("verification_uri").ToString)
-
-        '弹窗
-        Dim Converter As New MyMsgBoxConverter With {.Content = PrepareJson, .ForceWait = True, .Type = MyMsgBoxType.Login}
-        WaitingMyMsgBox.Enqueue(Converter)
-        While Converter.Result Is Nothing
-            Thread.Sleep(100)
-        End While
-        If TypeOf Converter.Result Is RestartException Then
-            If MyMsgBox($"请在登录时选择 {vbLQ}其他登录方法{vbRQ}，然后选择 {vbLQ}使用我的密码{vbRQ}。{vbCrLf}如果没有该选项，请选择 {vbLQ}设置密码{vbRQ}，设置完毕后再登录。",
-                "需要使用密码登录", "重新登录", "设置密码", "取消",
-                Button2Action:=Sub() OpenWebsite("https://account.live.com/password/Change")) = 1 Then
-                GoTo Retry
-            Else
-                Throw New OperationCanceledException
-            End If
-        ElseIf TypeOf Converter.Result Is Exception Then
-            Throw CType(Converter.Result, Exception)
-        Else
-            Return (Converter.Result(0), Converter.Result(1))
-        End If
-    End Function
-    '微软登录步骤 1，刷新登录：从 OAuth Code 或 OAuth RefreshToken 获取 {OAuth AccessToken, OAuth RefreshToken}
-    Private Function MsLoginStep1Refresh(Code As String) As (OAuthAccessToken As String, OAuthRefreshToken As String)
-        McLaunchLog("开始微软登录步骤 1/6（刷新登录）")
-
-        Dim Result As String
-        Try
-            Result = NetRequestByClientMultiple("https://login.live.com/oauth20_token.srf", HttpMethod.Post,
-                Content:=$"client_id={OAuthClientId}&refresh_token={StringUtils.FormUrlEscape(Code)}&grant_type=refresh_token&scope=XboxLive.signin%20offline_access",
-                ContentType:="application/x-www-form-urlencoded",
-                Headers:={{"Accept-Language", "en-US,en;q=0.5"}, {"X-Requested-With", "XMLHttpRequest"}},
-                ThreadCount:=2)
-        Catch ex As HttpRequestCodeException
-            '修改错误列表时，同时检查 MyMsgLogin.xaml.vb 中的对应代码
-            Dim Response = ex.Response
-            If Response.ContainsIgnoreCase("must sign in again") OrElse Response.ContainsIgnoreCase("password expired") OrElse
-               (Response.Contains("refresh_token") AndAlso Response.ContainsIgnoreCase("is not valid")) OrElse '#269
-               Response.ContainsIgnoreCase("expired") Then '#8611
-                Return ("Relogin", "")
-            ElseIf Response.Contains("Account security interrupt") Then
-                MyMsgBox("该账号由于安全问题无法登陆，请前往微软账户页获取更多信息。", "登录失败", "我知道了", IsWarn:=True)
-                Throw New OperationCanceledException
-            ElseIf Response.Contains("service abuse") Then
-                MyMsgBox("非常抱歉，该账号已被微软封禁，无法登录。", "登录失败", "我知道了", IsWarn:=True)
-                Throw New OperationCanceledException
-            Else
-                Throw
-            End If
-        End Try
-
-        Dim ResultJson As JObject = Result.DeserializeJson()
-        Dim AccessToken As String = ResultJson("access_token").ToString
-        Dim RefreshToken As String = ResultJson("refresh_token").ToString
-        Return (AccessToken, RefreshToken)
-    End Function
-    '微软登录步骤 2：从 OAuth AccessToken 获取 XBLToken
-    Private Function MsLoginStep2(AccessToken As String) As String
-        McLaunchLog("开始微软登录步骤 2/6")
-
-        Dim Request As String = "{
-           ""Properties"": {
-               ""AuthMethod"": ""RPS"",
-               ""SiteName"": ""user.auth.xboxlive.com"",
-               ""RpsTicket"": """ & If(AccessToken.StartsWithF("d="), "", "d=") & AccessToken & """
-           },
-           ""RelyingParty"": ""http://auth.xboxlive.com"",
-           ""TokenType"": ""JWT""
-        }"
-        Return NetRequestByClientMultiple("https://user.auth.xboxlive.com/user/authenticate", HttpMethod.Post,
-            Content:=Request, ContentType:="application/json", RequireJson:=True).DeserializeJson()("Token").ToString
-    End Function
-    '微软登录步骤 3：从 XBLToken 获取 {XSTSToken, UHS}
-    Private Function MsLoginStep3(XBLToken As String) As (XSTSToken As String, UHS As String)
-        McLaunchLog("开始微软登录步骤 3/6")
-
-        Dim Request As String = "{
-           ""Properties"": {
-               ""SandboxId"": ""RETAIL"",
-               ""UserTokens"": [""" & XBLToken & """]
-           },
-           ""RelyingParty"": ""rp://api.minecraftservices.com/"",
-           ""TokenType"": ""JWT""
-        }"
-        Dim Result As String
-        Try
-            Result = NetRequestByClientMultiple("https://xsts.auth.xboxlive.com/xsts/authorize", HttpMethod.Post,
-                Content:=Request, ContentType:="application/json", RequireJson:=True)
-        Catch ex As HttpRequestCodeException
-            '参考 https://github.com/PrismarineJS/prismarine-auth/blob/master/src/common/Constants.js
-            If ex.Response.Contains("2148916227") Then
-                MyMsgBox("该账号似乎已被微软封禁，无法登录。", "登录失败", "我知道了", IsWarn:=True)
-                Throw New OperationCanceledException
-            ElseIf ex.Response.Contains("2148916233") Then
-                If MyMsgBox("你尚未注册 Xbox 账户，请在注册后再登录。", "登录提示", "注册", "取消") = 1 Then
-                    OpenWebsite("https://signup.live.com/signup")
-                End If
-                Throw New OperationCanceledException
-            ElseIf ex.Response.Contains("2148916235") Then
-                MyMsgBox($"你的网络所在的国家或地区无法登录微软账号。{vbCrLf}请使用加速器或 VPN，然后再试。", "登录失败", "我知道了")
-                Throw New OperationCanceledException
-            ElseIf ex.Response.Contains("2148916238") Then
-                If MyMsgBox("该账号年龄不足，你需要先修改出生日期，然后才能登录。" & vbCrLf &
-                            "该账号目前填写的年龄是否在 13 岁以上？", "登录提示", "13 岁以上", "12 岁以下", "我不知道") = 1 Then
-                    OpenWebsite("https://account.live.com/editprof.aspx")
-                    MyMsgBox("请在打开的网页中修改账号的出生日期（至少改为 18 岁以上）。" & vbCrLf &
-                             "在修改成功后等待一分钟，然后再回到 PCL，就可以正常登录了！", "登录提示")
-                Else
-                    OpenWebsite("https://support.microsoft.com/zh-cn/account-billing/如何更改-microsoft-帐户上的出生日期-837badbc-999e-54d2-2617-d19206b9540a")
-                    MyMsgBox("请根据打开的网页的说明，修改账号的出生日期（至少改为 18 岁以上）。" & vbCrLf &
-                             "在修改成功后等待一分钟，然后再回到 PCL，就可以正常登录了！", "登录提示")
-                End If
-                Throw New OperationCanceledException
-            Else
-                Throw
-            End If
-        End Try
-
-        Dim ResultJson As JObject = Result.DeserializeJson()
-        Return (
-            ResultJson("Token").ToString(), 'XSTSToken
-            ResultJson("DisplayClaims")("xui")(0)("uhs").ToString() 'UHS
-        )
-    End Function
-    '微软登录步骤 4：从 {XSTSToken, UHS} 获取 {Minecraft AccessToken, 过期于 (Unix 时间戳)}
-    Private Function MsLoginStep4(Tokens As (XSTSToken As String, UHS As String)) As (AccessToken As String, ExpiresAt As Integer)
-        McLaunchLog("开始微软登录步骤 4/6")
-
-        Dim Request As String = New JObject(New JProperty("identityToken", $"XBL3.0 x={Tokens.UHS};{Tokens.XSTSToken}")).ToString(0)
-        Dim Result As String
-        Try
-            Result = NetRequestByClientRetry("https://api.minecraftservices.com/authentication/login_with_xbox", HttpMethod.Post,
-                Content:=Request, ContentType:="application/json", RequireJson:=True)
-        Catch ex As HttpRequestCodeException
-            If ex.StatusCode = 429 Then
-                Logger.Warn(ex, "微软登录第 4 步汇报 429")
-                Throw New Exception("$登录尝试太过频繁，请等待几分钟后再试！")
-            ElseIf ex.StatusCode = HttpStatusCode.Forbidden Then
-                Logger.Warn(ex, "微软登录第 4 步汇报 403")
-                Throw New Exception("$当前 IP 的登录尝试异常。" & vbCrLf & "如果你使用了 VPN 或加速器，请把它们关掉或更换节点后再试！")
-            ElseIf ex.StatusCode = HttpStatusCode.ServiceUnavailable Then
-                Logger.Warn(ex, "微软登录第 4 步汇报 503")
-                Throw New Exception("$Mojang 服务器出现问题，请稍后再试。" & vbCrLf & "你的网络是正常的，PCL 也是正常的，是 Mojang 出问题了……")
-            ElseIf ex.Response?.Contains("ACCOUNT_SUSPENDED") Then '#8655
-                MyMsgBox("该账号似乎已被微软封禁，无法登录。", "登录失败", "我知道了", IsWarn:=True)
-                Throw New OperationCanceledException
-            Else
-                Throw
-            End If
-        End Try
-
-        Dim ResultJson As JObject = Result.DeserializeJson()
-        Return (
-            ResultJson("access_token").ToString,
-            ResultJson("expires_in").ToObject(Of Integer) + GetUnixTimestampUtc() - 3600) '提前 1 小时视作过期
-    End Function
-    '微软登录步骤 5：验证微软账号是否持有 MC，这也会刷新 XGP
-    Private Sub MsLoginStep5(AccessToken As String)
-        McLaunchLog("开始微软登录步骤 5/6")
-
-        Dim Result As String = NetRequestByClientMultiple("https://api.minecraftservices.com/entitlements/mcstore",
-            ContentType:="application/json", ThreadCount:=2, Headers:={{"Authorization", "Bearer " & AccessToken}}, RequireJson:=True)
-        Try
-            Dim ResultJson As JObject = Result.DeserializeJson()
-            If Not (ResultJson.ContainsKey("items") AndAlso ResultJson("items").Any) Then
-                Select Case MyMsgBox("你尚未购买正版 Minecraft，或者 Xbox Game Pass 已到期。", "登录失败", "购买 Minecraft", "取消")
-                    Case 1
-                        OpenWebsite("https://www.xbox.com/zh-cn/games/store/minecraft-java-bedrock-edition-for-pc/9nxp44l49shj")
-                End Select
-                Throw New OperationCanceledException
-            End If
-        Catch ex As Exception
-            Logger.Warn(ex, $"微软登录第 5 步异常：{Result}")
-            Throw
-        End Try
-    End Sub
-    '微软登录步骤 6：从 Minecraft AccessToken 获取 {UUID, UserName, ProfileJson}
-    Private Function MsLoginStep6(AccessToken As String) As (UUID As String, UserName As String, ProfileJson As String)
-        McLaunchLog("开始微软登录步骤 6/6")
-
-        Dim Result As String
-        Try
-            Result = NetRequestByClientMultiple("https://api.minecraftservices.com/minecraft/profile",
-                ContentType:="application/json", ThreadCount:=2, Headers:={{"Authorization", "Bearer " & AccessToken}}, RequireJson:=True)
-        Catch ex As HttpRequestCodeException
-            Select Case ex.StatusCode
-                Case 429
-                    Logger.Warn(ex, "微软登录第 6 步汇报 429")
-                    Throw New Exception("$登录尝试太过频繁，请等待几分钟后再试！")
-                Case HttpStatusCode.NotFound
-                    Logger.Warn(ex, "微软登录第 6 步汇报 404")
-                    RunInNewThread(
-                    Sub()
-                        Select Case MyMsgBox("请先创建 Minecraft 玩家档案，然后再重新登录。", "登录失败", "创建档案", "取消")
-                            Case 1
-                                OpenWebsite("https://www.minecraft.net/zh-hans/msaprofile/mygames/editprofile")
-                        End Select
-                    End Sub, "Login Failed: Create Profile")
-                    Throw New OperationCanceledException
-                Case Else
-                    Throw
-            End Select
-        End Try
-        Dim ResultJson As JObject = Result.DeserializeJson()
-        Dim UUID As String = ResultJson("id").ToString
-        Dim UserName As String = ResultJson("name").ToString
-        Return (UUID, UserName, Result)
-    End Function
-
-    '返回符合离线皮肤设置的 UUID
-    Private Function McLoginLegacyUuidWithCustomSkin(UserName As String, SkinType As Integer, SkinName As String) As String
-        Dim Uuid As String = McLoginLegacyUuid(UserName)
-        '根据离线皮肤获取实际使用的 Uuid
-        Select Case SkinType
-            Case 0
-                '默认，不需要处理
-            Case 1
-                'Steve
-                Do Until McSkinSex(Uuid) = "Steve"
-                    If Uuid.EndsWithF("FFFFF") Then Uuid = Uuid.Substring(0, 27) & "00000"
-                    Uuid = Uuid.Substring(0, 27) & (Long.Parse(Uuid.Substring(27), Globalization.NumberStyles.AllowHexSpecifier) + 1).ToString("X").PadLeft(5, "0")
-                Loop
-            Case 2
-                'Alex
-                Do Until McSkinSex(Uuid) = "Alex"
-                    If Uuid.EndsWithF("FFFFF") Then Uuid = Uuid.Substring(0, 27) & "00000"
-                    Uuid = Uuid.Substring(0, 27) & (Long.Parse(Uuid.Substring(27), Globalization.NumberStyles.AllowHexSpecifier) + 1).ToString("X").PadLeft(5, "0")
-                Loop
-            Case 3
-                '使用正版用户名
-                Try
-                    If SkinName <> "" AndAlso
-                        McInstanceSelected IsNot Nothing AndAlso McInstanceSelected.Version.Vanilla.Major < 20 Then '1.20+ 或快照版不能使用该项（#3746）
-                        Logger.Info($"由于离线皮肤设置，使用正版 UUID：{SkinName}")
-                        Uuid = McLoginMojangUuid(SkinName, False)
-                    End If
-                Catch ex As Exception
-                    Logger.Error(ex, "皮肤信息获取失败，游戏将以无皮肤的方式启动", LogBehavior.Toast)
-                End Try
-            Case 4
-                '自定义
-                Do Until McSkinSex(Uuid) = If(Settings.Get(Of Boolean)("LaunchSkinSlim"), "Alex", "Steve")
-                    If Uuid.EndsWithF("FFFFF") Then Uuid = Uuid.Substring(0, 27) & "00000"
-                    Uuid = Uuid.Substring(0, 27) & (Long.Parse(Uuid.Substring(27), Globalization.NumberStyles.AllowHexSpecifier) + 1).ToString("X").PadLeft(5, "0")
-                Loop
-        End Select
-        Return Uuid
-    End Function
-    '根据用户名返回对应 UUID，需要多线程
-    Public Function McLoginMojangUuid(Name As String, ThrowOnNotFound As Boolean)
-        If Name.Trim.Length = 0 Then Return New String("0"c, 32)
-        '从缓存获取
-        Dim Uuid As String = ReadIni(PathTemp & "Cache\Uuid\Mojang.ini", Name, "")
-        If Len(Uuid) = 32 Then Return Uuid
-        '从官网获取
-        Try
-            Dim GotJson As JObject = NetRequestByClientRetry("https://api.mojang.com/users/profiles/minecraft/" & Name, RequireJson:=True).DeserializeJson()
-            If GotJson Is Nothing Then Throw New FileNotFoundException("正版玩家档案不存在（" & Name & "）")
-            Uuid = If(GotJson("id"), "")
-        Catch ex As Exception
-            Logger.Warn(ex, $"从官网获取正版 Uuid 失败（{Name}）")
-            If Not ThrowOnNotFound AndAlso ex.GetType.Name = "FileNotFoundException" Then
-                Uuid = McLoginLegacyUuid(Name) '玩家档案不存在
-            Else
-                Throw New Exception("从官网获取正版 Uuid 失败", ex)
-            End If
-        End Try
-        '写入缓存
-        If Not Len(Uuid) = 32 Then Throw New Exception("获取的正版 Uuid 长度不足（" & Uuid & "）")
-        WriteIni(PathTemp & "Cache\Uuid\Mojang.ini", Name, Uuid)
-        Return Uuid
-    End Function
-    Public Function McLoginLegacyUuid(Name As String)
-        Dim FullUuid As String = Name.Length.ToString("X").EnsureLength("0", 16) & Name.GetStableHashCode().ToString("X").EnsureLength("0", 16)
-        Return FullUuid.Substring(0, 12) & "3" & FullUuid.Substring(13, 3) & "9" & FullUuid.Substring(17, 15)
     End Function
 
 #End Region
@@ -1281,14 +725,10 @@ NextInstance:
         '重新分割字符串并去重
         Args = DeduplicateJavaArguments(SplitJavaArguments(Args.Join(" "c).Replace("McEmu= ", "McEmu=") & " " & CustomArg).ToList, True)
 
-        '统一通行证
-        If McLoginLoader.Output.Type = "Nide" Then
-            Args.Add("-javaagent:""${pure_directory}\nide8auth.jar""=""" & Settings.Get(Of String)("VersionServerNide", Instance:=McInstanceSelected) & """")
-        End If
         'Authlib-Injector
         If McLoginLoader.Output.Type = "Auth" Then
             If McLaunchJavaSelected.Version.Major >= 6 Then Args.Add("-Djavax.net.ssl.trustStoreType=WINDOWS-ROOT") '信任系统根证书（5252#）
-            Dim Server As String = Settings.Get(Of String)("VersionServerAuthServer", Instance:=McInstanceSelected)
+            Dim Server As String = SduSkinLogin.AuthServer
             Try
                 McLaunchLog($"开始 Authlib Injector Prefetch")
                 Dim Response As String = NetRequestByClientRetry(Server, Encoding:=Encoding.UTF8)
@@ -1892,125 +1332,6 @@ NextInstance:
             Logger.Error(ex, "更新 options.txt 失败", LogBehavior.Toast)
         End Try
 
-        '离线皮肤 Alex 警告
-        If McInstanceSelected.Version.Vanilla.Major <= 7 AndAlso McInstanceSelected.Version.Vanilla.Major >= 2 AndAlso '1.2 ~ 1.7
-               McLoginLoader.Input.Type = McLoginType.Legacy AndAlso '离线登录
-               (Settings.Get(Of Integer)("LaunchSkinType") = 2 OrElse '强制 Alex
-               (Settings.Get(Of Integer)("LaunchSkinType") = 4 AndAlso Settings.Get(Of Boolean)("LaunchSkinSlim"))) Then '或选用 Alex 皮肤
-            Hint("此 Minecraft 版本尚不支持 Alex 皮肤，你的皮肤可能会显示为 Steve！", HintType.Red)
-        End If
-
-        '离线皮肤资源包
-        Try
-            Dim ZipFileAddress As String = McInstanceSelected.PathIndie & "resourcepacks\PCL2 Skin.zip"
-            Dim NewTypeSetup As Boolean = McInstanceSelected.Version.Vanilla.Major >= 13 OrElse McInstanceSelected.Version.Vanilla.Major < 6
-            If McLoginLoader.Input.Type = McLoginType.Legacy AndAlso Settings.Get(Of Integer)("LaunchSkinType") = 4 AndAlso FileUtils.Exists(Paths.AppDataThenName & "CustomSkin.png") Then
-                Dim MetaFileAddress As String = PathTemp & "pack.mcmeta"
-                Dim PackPicAddress As String = PathTemp & "pack.png"
-                If McInstanceSelected.Version.Vanilla.Major < 6 Then
-                    McLaunchLog("Minecraft 版本过老，尚不支持自定义离线皮肤")
-                    GoTo IgnoreCustomSkin
-                End If
-                Dim PackVersionJToken As JToken = McInstanceSelected.JsonVersion?("pack_version")
-                If TypeOf PackVersionJToken Is JObject Then PackVersionJToken = DirectCast(PackVersionJToken, JObject)("resource") '从 1.17 开始，可以从 pack_version.resource 获取资源包版本
-                Dim PackVersion As Integer = Val(PackVersionJToken?.ToString)
-                If PackVersion <= 0 Then '没有对应字段的老版本 MC，或兜底
-                    Select Case McInstanceSelected.Version.Vanilla.Major
-                        Case 6, 7, 8
-                            PackVersion = 1
-                        Case 9, 10
-                            PackVersion = 2
-                        Case 11, 12
-                            PackVersion = 3
-                        Case 13, 14
-                            PackVersion = 4
-                        Case 15
-                            PackVersion = 5
-                        Case 16
-                            PackVersion = If(McInstanceSelected.Version.Vanilla.Build <= 1, 5, 6)
-                        Case 17
-                            PackVersion = 7
-                        Case 18
-                            PackVersion = 8
-                        Case Else '旧版快照可能没有可用的资源包格式声明
-                            PackVersion = 17
-                    End Select
-                End If
-                McLaunchLog($"正在构建自定义皮肤资源包，版本号 {PackVersion}，MC 版本 {McInstanceSelected.Version.Vanilla}")
-                '准备文件
-                Dim Bit As New MyBitmap(PathImage & "Heads/Logo.png")
-                Bit.Save(PackPicAddress)
-                FileUtils.Write(MetaFileAddress, "{""pack"":{""pack_format"":" & PackVersion & ",""description"":""PCL 自定义离线皮肤资源包""}}")
-                Dim Skin As New MyBitmap(Paths.AppDataThenName & "CustomSkin.png")
-                If (McInstanceSelected.Version.Vanilla.Major = 6 OrElse McInstanceSelected.Version.Vanilla.Major = 7) AndAlso Skin.Pic.Height = 64 Then
-                    McLaunchLog("该 Minecraft 版本不支持双层皮肤，已进行裁剪")
-                    Skin = Skin.Clip(0, 0, 64, 32)
-                End If
-                Skin.Save(Paths.Base & "PCL\CustomSkin_Cliped.png")
-                '构建压缩文件
-                Dim FilesToCompress As New Dictionary(Of String, String) From {
-                    {"pack.mcmeta", MetaFileAddress}, {"pack.png", PackPicAddress}}
-                If McInstanceSelected.Version.Vanilla >= New Version(19, 0, 3) Then
-                    '1.19.3+ 使用复杂版本的替换
-                    For Each SkinName In {"alex", "ari", "efe", "kai", "makena", "noor", "steve", "sunny", "zuri"}
-                        FilesToCompress.Add(
-                                $"assets/minecraft/textures/entity/player/{If(Settings.Get(Of Boolean)("LaunchSkinSlim"), "slim", "wide")}/{SkinName}.png",
-                                Paths.Base & "PCL\CustomSkin_Cliped.png")
-                    Next
-                Else
-                    FilesToCompress.Add(
-                            $"assets/minecraft/textures/entity/{If(Settings.Get(Of Boolean)("LaunchSkinSlim"), "alex.png", "steve.png")}",
-                            Paths.Base & "PCL\CustomSkin_Cliped.png")
-                End If
-                FileUtils.CreateZipFromFiles(ZipFileAddress, FilesToCompress)
-                FileUtils.Delete(Paths.Base & "PCL\CustomSkin_Cliped.png")
-                '更改设置文件
-                IniClearCache(SetupFileAddress)
-                Dim EnabledResourcePack As String = ReadIni(SetupFileAddress, "resourcePacks", "[]").TrimStart("[").TrimEnd("]")
-                If NewTypeSetup Then
-                    If EnabledResourcePack = "" Then EnabledResourcePack = """vanilla"""
-                    Dim EnabledResourcePacks As New List(Of String)(EnabledResourcePack.Split(","))
-                    Dim NewResourcePacks As New List(Of String)
-                    For Each Res In EnabledResourcePacks
-                        If Res <> """file/PCL2 Skin.zip""" AndAlso Res <> "" Then NewResourcePacks.Add(Res)
-                    Next
-                    NewResourcePacks.Add("""file/PCL2 Skin.zip""")
-                    Dim Result As String = "[" & NewResourcePacks.Join(","c) & "]"
-                    WriteIni(SetupFileAddress, "resourcePacks", Result)
-                Else
-                    Dim EnabledResourcePacks As New List(Of String)(EnabledResourcePack.Split(","))
-                    Dim NewResourcePacks As New List(Of String)
-                    For Each Res In EnabledResourcePacks
-                        If Res <> """PCL2 Skin.zip""" AndAlso Res <> "" Then NewResourcePacks.Add(Res)
-                    Next
-                    NewResourcePacks.Add("""PCL2 Skin.zip""")
-                    Dim Result As String = "[" & NewResourcePacks.Join(","c) & "]"
-                    WriteIni(SetupFileAddress, "resourcePacks", Result)
-                End If
-IgnoreCustomSkin:
-            ElseIf FileUtils.Exists(ZipFileAddress) Then
-                McLaunchLog("正在清空自定义皮肤资源包")
-                '删除压缩文件
-                FileUtils.Delete(ZipFileAddress)
-                '更改设置文件
-                IniClearCache(SetupFileAddress)
-                Dim EnabledResourcePack As String = ReadIni(SetupFileAddress, "resourcePacks", "[]").TrimStart("[").TrimEnd("]")
-                If NewTypeSetup Then
-                    If EnabledResourcePack = "" Then EnabledResourcePack = """vanilla"""
-                    Dim EnabledResourcePacks As New List(Of String)(EnabledResourcePack.Split(","))
-                    EnabledResourcePacks.Remove("""file/PCL2 Skin.zip""")
-                    Dim Result As String = "[" & EnabledResourcePacks.Join(","c) & "]"
-                    WriteIni(SetupFileAddress, "resourcePacks", Result)
-                Else
-                    Dim EnabledResourcePacks As New List(Of String)(EnabledResourcePack.Split(","))
-                    EnabledResourcePacks.Remove("""PCL2 Skin.zip""")
-                    Dim Result As String = "[" & EnabledResourcePacks.Join(","c) & "]"
-                    WriteIni(SetupFileAddress, "resourcePacks", Result)
-                End If
-            End If
-        Catch ex As Exception
-            Logger.Error(ex, "离线皮肤资源包设置失败", LogBehavior.Toast)
-        End Try
 
     End Sub
     Private Sub McLaunchCustom(Loader As LoaderTask(Of Integer, Integer))

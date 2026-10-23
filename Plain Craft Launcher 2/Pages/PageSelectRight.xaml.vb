@@ -185,7 +185,7 @@ Public Class PageSelectRight
     End Sub
 
     Private Sub BtnDownload_Click(sender As Object, e As EventArgs) Handles BtnEmptyDownload.Click
-        FrmMain.PageChange(FormMain.PageType.Download, FormMain.PageSubType.DownloadInstall)
+        FrmMain.PageChange(FormMain.PageType.Download, FormMain.PageSubType.DownloadSdu)
     End Sub
 
     '修改此代码时，同时修改 PageInstanceOverall 中的代码

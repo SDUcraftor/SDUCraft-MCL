@@ -6,15 +6,6 @@ Friend Module ModSecret
     Public Const VersionBranchMain As String = "OpenSource"
     '在开源版的注册表与常规版的注册表隔离，以防数据冲突
     Public Const RegFolder As String = "PCLDebug"
-    '用于微软登录的 ClientId。
-    '优先取 设置 → 启动 → SDUcraft 接入配置 中的填写值；留空时取环境变量 PCL_MS_CLIENT_ID
-    Public ReadOnly Property OAuthClientId As String
-        Get
-            Dim FromSetting As String = Settings.Get(Of String)("SduMsClientId")
-            If Not String.IsNullOrEmpty(FromSetting) Then Return FromSetting
-            Return If(Environment.GetEnvironmentVariable("PCL_MS_CLIENT_ID"), "")
-        End Get
-    End Property
     'CurseForge API Key。
     '优先取 设置 → 启动 → SDUcraft 接入配置 中的填写值；留空时取环境变量 PCL_CURSEFORGE_API_KEY
     Public ReadOnly Property CurseForgeAPIKey As String

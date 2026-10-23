@@ -48,14 +48,11 @@ Public Class PageInstanceSetup
         Try
 
             '启动参数
-            Dim _unused = PageInstanceLeft.Instance.PathIndie '触发自动判定
-            ComboArgumentIndieV2.SelectedIndex = If(Settings.Get(Of Boolean)("VersionArgumentIndieV2", Instance:=PageInstanceLeft.Instance), 0, 1)
+            Dim _unused = PageInstanceLeft.Instance.PathIndie '同步旧设置，固定使用隔离实例目录
             UpdateJavaList()
 
             '服务器
-            ComboServerLogin.SelectedIndex = Settings.Get(Of Integer)("VersionServerLogin", Instance:=PageInstanceLeft.Instance)
-            ComboServerLoginLast = ComboServerLogin.SelectedIndex
-            UpdateServerLoginUI()
+            SduSkinLogin.EnsureConfiguration(PageInstanceLeft.Instance)
 
             '高级设置
             If Settings.Get(Of Integer)("VersionAdvanceAssets", Instance:=PageInstanceLeft.Instance) = 2 Then
@@ -343,45 +340,9 @@ PreFin:
     End Sub
 
     '全局
-    Private ComboServerLoginLast As Integer
-    Private Sub ComboServerLogin_Changed() Handles ComboServerLogin.SelectionChanged, TextServerNide.ValidatedTextChanged, TextServerAuthServer.ValidatedTextChanged, TextServerAuthRegister.ValidatedTextChanged
-        If AniControlEnabled <> 0 Then Return
-        UpdateServerLoginUI()
-        '检查是否输入正确，正确才触发设置改变
-        If ComboServerLogin.SelectedIndex = 3 AndAlso Not TextServerNide.IsValidated Then Return
-        If ComboServerLogin.SelectedIndex = 4 AndAlso Not TextServerAuthServer.IsValidated Then Return
-        '检查结果是否发生改变，未改变则不触发设置改变
-        If ComboServerLoginLast = ComboServerLogin.SelectedIndex Then Return
-        '触发
-        ComboServerLoginLast = ComboServerLogin.SelectedIndex
-        Settings.Set("VersionServerLogin", ComboServerLogin.SelectedIndex, Instance:=PageInstanceLeft.Instance)
+    Private Sub BtnSduSkinWebsite_Click() Handles BtnSduSkinWebsite.Click
+        OpenWebsite(SduSkinLogin.Website)
     End Sub
-    Private Sub UpdateServerLoginUI()
-        If LabServerNide Is Nothing Then Return
-        Dim Type = ComboServerLogin.SelectedIndex
-        LabServerNide.Visibility = If(Type = 3, Visibility.Visible, Visibility.Collapsed)
-        TextServerNide.Visibility = If(Type = 3, Visibility.Visible, Visibility.Collapsed)
-        PanServerNide.Visibility = If(Type = 3, Visibility.Visible, Visibility.Collapsed)
-        LabServerAuthName.Visibility = If(Type = 4, Visibility.Visible, Visibility.Collapsed)
-        TextServerAuthName.Visibility = If(Type = 4, Visibility.Visible, Visibility.Collapsed)
-        LabServerAuthRegister.Visibility = If(Type = 4, Visibility.Visible, Visibility.Collapsed)
-        TextServerAuthRegister.Visibility = If(Type = 4, Visibility.Visible, Visibility.Collapsed)
-        LabServerAuthServer.Visibility = If(Type = 4, Visibility.Visible, Visibility.Collapsed)
-        TextServerAuthServer.Visibility = If(Type = 4, Visibility.Visible, Visibility.Collapsed)
-        BtnServerAuthLittle.Visibility = If(Type = 4, Visibility.Visible, Visibility.Collapsed)
-        CardServer.TriggerForceResize()
-    End Sub
-
-    'LittleSkin
-    Private Sub BtnServerAuthLittle_Click(sender As Object, e As EventArgs) Handles BtnServerAuthLittle.Click
-        If TextServerAuthServer.Text <> "" AndAlso TextServerAuthServer.Text <> "https://littleskin.cn/api/yggdrasil" AndAlso
-            MyMsgBox("即将把第三方登录设置覆盖为 LittleSkin 登录。" & vbCrLf & "除非你是服主，或者服主要求你这样做，否则请不要继续。" & vbCrLf & vbCrLf & "是否确实需要覆盖当前设置？",
-                     "设置覆盖确认", "继续", "取消") = 2 Then Return
-        TextServerAuthServer.Text = "https://littleskin.cn/api/yggdrasil"
-        TextServerAuthRegister.Text = "https://littleskin.cn/auth/register"
-        TextServerAuthName.Text = "LittleSkin 登录"
-    End Sub
-
 #End Region
 
 #Region "Java 主类别和预览"
@@ -531,22 +492,6 @@ PreFin:
 
 #End Region
 
-    '版本隔离
-    Private Sub ComboArgumentIndieV2_SelectionChanged(sender As Object, e As SelectionChangedEventArgs) Handles ComboArgumentIndieV2.SelectionChanged
-        If AniControlEnabled <> 0 Then Return
-        Static IsReverting As Boolean = False
-        If IsReverting Then Return
-        If MyMsgBox("调整版本隔离设置后，你需要游戏存档、Mod 等文件手动迁移到新的游戏文件夹中。" & vbCrLf &
-                    "如果发现存档消失，把这项设置改回来就能恢复。" & vbCrLf &
-                    "如果你不会迁移存档，不建议修改这项设置！",
-                    "警告", "我知道我在做什么", "取消", IsWarn:=True) = 2 Then
-            IsReverting = True
-            If e.RemovedItems.Count > 0 Then ComboArgumentIndieV2.SelectedItem = e.RemovedItems(0)
-            IsReverting = False
-        End If
-        '实际应用设置
-        Settings.Set("VersionArgumentIndieV2", sender.SelectedIndex = 0, Instance:=PageInstanceLeft.Instance)
-    End Sub
 
     '启动前执行命令
     Private Sub TextAdvanceRun_TextChanged(sender As Object, e As TextChangedEventArgs) Handles TextAdvanceRun.TextChanged

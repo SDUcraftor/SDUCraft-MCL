@@ -27,11 +27,12 @@ Public Class PageLoginAuth
     ''' 获取当前页面的登录信息。
     ''' </summary>
     Public Shared Function GetLoginData() As McLoginServer
-        Dim Server As String = If(IsNothing(McInstanceSelected), Settings.Get(Of String)("CacheAuthServerServer"), Settings.Get(Of String)("VersionServerAuthServer", Instance:=McInstanceSelected)) & "/authserver"
+        SduSkinLogin.EnsureConfiguration(McInstanceSelected)
+        Dim Server As String = SduSkinLogin.LoginServer
         If FrmLoginAuth Is Nothing Then
-            Return New McLoginServer(McLoginType.Auth) With {.Token = "Auth", .BaseUrl = Server, .UserName = "", .Password = "", .Description = "Authlib-Injector", .Type = McLoginType.Auth}
+            Return New McLoginServer(McLoginType.Auth) With {.Token = "Auth", .BaseUrl = Server, .UserName = "", .Password = "", .Description = SduSkinLogin.DisplayName, .Type = McLoginType.Auth}
         Else
-            Return New McLoginServer(McLoginType.Auth) With {.Token = "Auth", .BaseUrl = Server, .UserName = FrmLoginAuth.ComboName.Text.Replace("¨", "").Trim, .Password = FrmLoginAuth.TextPass.Password.Replace("¨", "").Trim, .Description = "Authlib-Injector", .Type = McLoginType.Auth}
+            Return New McLoginServer(McLoginType.Auth) With {.Token = "Auth", .BaseUrl = Server, .UserName = FrmLoginAuth.ComboName.Text.Replace("¨", "").Trim, .Password = FrmLoginAuth.TextPass.Password.Replace("¨", "").Trim, .Description = SduSkinLogin.DisplayName, .Type = McLoginType.Auth}
         End If
     End Function
     ''' <summary>
@@ -66,21 +67,22 @@ Public Class PageLoginAuth
     End Sub
 
     '链接处理
+    Private Sub BtnWebsite_Click() Handles BtnWebsite.Click
+        OpenWebsite(SduSkinLogin.Website)
+    End Sub
     Private Sub ComboName_TextChanged() Handles ComboName.TextChanged
         BtnLink.Content = If(ComboName.Text = "", "注册账号", "找回密码")
     End Sub
     Private Sub Btn_Click(sender As Object, e As EventArgs) Handles BtnLink.Click
         If BtnLink.Content = "注册账号" Then
-            OpenWebsite(If(McInstanceSelected IsNot Nothing, Settings.Get(Of String)("VersionServerAuthRegister", Instance:=McInstanceSelected), Settings.Get(Of String)("CacheAuthServerRegister")))
+            OpenWebsite(SduSkinLogin.RegisterPage)
         Else
-            Dim Website As String = If(McInstanceSelected IsNot Nothing, Settings.Get(Of String)("VersionServerAuthRegister", Instance:=McInstanceSelected), Settings.Get(Of String)("CacheAuthServerRegister"))
-            OpenWebsite(Website.Replace("/auth/register", "/auth/forgot"))
+            OpenWebsite(SduSkinLogin.ForgotPasswordPage)
         End If
     End Sub
     '切换注册按钮可见性
     Private Sub ReloadRegisterButton() Handles Me.Loaded
-        Dim Address As String = If(McInstanceSelected IsNot Nothing, Settings.Get(Of String)("VersionServerAuthRegister", Instance:=McInstanceSelected), Settings.Get(Of String)("CacheAuthServerRegister"))
-        BtnLink.Visibility = If(String.IsNullOrEmpty(New ValidateHttp().Validate(Address)), Visibility.Visible, Visibility.Collapsed)
+        BtnLink.Visibility = Visibility.Visible
     End Sub
 
 End Class

@@ -344,8 +344,6 @@ EndHint:
                         FrmMain.PanMsg.Children.Add(New MyMsgSelect(TargetMsgBox))
                     Case MyMsgBoxType.Text
                         FrmMain.PanMsg.Children.Add(New MyMsgText(TargetMsgBox))
-                    Case MyMsgBoxType.Login
-                        FrmMain.PanMsg.Children.Add(New MyMsgLogin(TargetMsgBox))
                 End Select
             Else
                 '没有弹窗，没有等待的弹窗
@@ -400,13 +398,8 @@ EndHint:
     Public FrmOtherTest As PageOtherTest
 
     '登录页面声明
-    Public FrmLoginLegacy As PageLoginLegacy
-    Public FrmLoginNide As PageLoginNide
-    Public FrmLoginNideSkin As PageLoginNideSkin
     Public FrmLoginAuth As PageLoginAuth
     Public FrmLoginAuthSkin As PageLoginAuthSkin
-    Public FrmLoginMs As PageLoginMs
-    Public FrmLoginMsSkin As PageLoginMsSkin
 
     '版本设置页面声明
     Public FrmInstanceLeft As PageInstanceLeft
@@ -415,7 +408,6 @@ EndHint:
     Public FrmInstanceModDisabled As PageInstanceModDisabled
     Public FrmInstanceSetup As PageInstanceSetup
     Public FrmInstanceExport As PageInstanceExport
-    Public FrmDownloadModify As PageDownloadModify
 
     '资源信息分页声明
     Public FrmDownloadResourceDetail As PageDownloadResourceDetail

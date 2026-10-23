@@ -296,19 +296,8 @@ Public Class FormMain
             '触发降级
             DowngradeSub(LastVersion)
         End If
-        '版本隔离设置迁移
-        If Not Settings.HasSaved("LaunchArgumentIndieV2") Then
-            If Settings.HasSaved("LaunchArgumentIndie") Then
-                Logger.Info("从老 PCL 迁移版本隔离")
-                Settings.Set("LaunchArgumentIndieV2", Settings.Get(Of Integer)("LaunchArgumentIndie"))
-            ElseIf HasIniKey("Setup", "LaunchVersionSelect") Then
-                Logger.Info("从老 PCL 升级，但此前未调整版本隔离，使用老的版本隔离默认值")
-                Settings.Set("LaunchArgumentIndieV2", Settings.GetDefault("LaunchArgumentIndie"))
-            Else
-                Logger.Info("全新的 PCL，使用新的版本隔离默认值")
-                Settings.Set("LaunchArgumentIndieV2", Settings.GetDefault("LaunchArgumentIndieV2"))
-            End If
-        End If
+        'SDUcraft 固定隔离所有版本，不沿用旧版本的关闭或自动判定策略。
+        Settings.Set("LaunchArgumentIndieV2", 4)
         '刷新主题
         ThemeCheckAll(False)
         ThemeRefresh(Settings.Get(Of Integer)("UiLauncherTheme"))
@@ -339,8 +328,8 @@ Public Class FormMain
         PageRight = FrmLaunchRight
         FrmLaunchRight.PageState = MyPageRight.PageStates.ContentStay
         '模式提醒
-        If BuildType = BuildTypes.Debug Then Hint("[开发者模式] PCL 正以开发者模式运行，这可能会造成严重的性能下降，请务必立即向开发者反馈此问题！", HintType.Red)
-        If ModeDebug Then Hint("[调试模式] PCL 正以调试模式运行，这可能会导致性能下降，若无必要请不要开启！")
+        If BuildType = BuildTypes.Debug Then Logger.Info("当前为开发者构建")
+        If ModeDebug Then Logger.Info("当前已开启调试日志")
         '尽早执行的加载池
         McFolderListLoader.Start(0) '为了让下载已存在文件检测可以正常运行，必须跑一次；为了让启动按钮尽快可用，需要尽早执行；为了与 PageLaunchLeft 联动，需要为 0 而不是 GetUuid
 
@@ -410,6 +399,8 @@ Public Class FormMain
         'Timer 启动
         AniStart()
         TimerMainStart()
+        '独立后台检查官网连通性，不等待网络或阻塞启动加载池。
+        SduNetworkCheck.CheckAtStartup()
         '加载池
         RunInNewThread(
         Sub()
@@ -447,11 +438,17 @@ Public Class FormMain
             End Try
             '上报
             Telemetry("启动")
-            '开源版本提示
+            '保留改版说明，介绍本分支的用途和使用方式。
             If VersionBranchMain = "OpenSource" Then
-                MyMsgBox($"该版本中无法使用以下特性：{vbCrLf}- CurseForge API 调用：需要自行申请 API Key，然后添加到 ModSecret.vb 的开头{vbCrLf}- 正版登录：需要自行向微软申请 Client ID，然后添加到 ModSecret.vb 的开头{vbCrLf}- 更新与联网通知：避免滥用隐患{vbCrLf}- 主题切换：这是需要赞助解锁的纪念性质的功能，别让赞助者太伤心啦……{vbCrLf}- 百宝箱：开发早期往里面塞了些开发工具，整理起来太麻烦了……", "开源版本说明")
-                RunInUi(Sub() FrmLaunchRight.RefreshSduDownloadPanel(), True)
+                MyMsgBox("欢迎使用 SDUcraft 改版启动器！" & vbCrLf & vbCrLf &
+                         "本版本基于 Plain Craft Launcher (PCL) 开源代码修改，由 SDUcraft 社区维护，并非 PCL 官方版本。" & vbCrLf & vbCrLf &
+                         "• 使用 SDUcraft 皮肤站账号登录。" & vbCrLf &
+                         "• 可在首页及下载页获取、安装 SDUcraft 整合包。" & vbCrLf &
+                         "• 访问校园服务前，请连接山东大学校园网。" & vbCrLf & vbCrLf &
+                         "皮肤站：https://skin.sducraft.cn/",
+                         "SDUcraft 改版说明", "我知道了")
             End If
+            RunInUi(Sub() FrmLaunchRight.RefreshSduDownloadPanel(), True)
         End Sub, "初始化", ThreadPriority.Lowest)
 
         Logger.Info($"第三阶段加载用时：{GetTimeMs() - ApplicationStartTick} ms")
@@ -459,20 +456,6 @@ Public Class FormMain
     '根据打开次数触发的事件
     Private Sub RunCountSub()
         Settings.Set("SystemCount", Settings.Get(Of Integer)("SystemCount") + 1)
-        If BuildType = BuildTypes.Snapshot Then
-            Select Case Settings.Get(Of Integer)("SystemCount")
-                Case 1
-                    MyMsgBox("欢迎使用 PCL 快照版！" & vbCrLf &
-                             "快照版包含尚未在正式版发布的测试性功能，仅用于赞助者本人尝鲜。所以请不要发给其他人或者用于制作整合包哦！" & vbCrLf &
-                             "如果你并非通过赞助或赞助者本人邀请进群获得的本程序，那么可能是有人在违规传播，记得提醒他一下啦。", "快照版使用说明")
-            End Select
-            If Settings.Get(Of Integer)("SystemCount") >= 99 Then
-                If ThemeUnlock(6, False) Then
-                    MyMsgBox("你已经使用了 99 次 PCL 啦，感谢你长期以来的支持！" & vbCrLf &
-                             "隐藏主题 铁杆粉 已解锁！", "提示")
-                End If
-            End If
-        End If
     End Sub
     '升级与降级事件
     Private Sub UpgradeSub(LastVersionCode As Integer)
@@ -500,16 +483,12 @@ Public Class FormMain
             Dim UnlockedTheme As New List(Of String)(Settings.Get(Of String)("UiLauncherThemeHide2").ToString.Split("|"))
             UnlockedTheme.Remove("13")
             Settings.Set("UiLauncherThemeHide2", UnlockedTheme.Join("|"c))
-            MyMsgBox("由于新版 PCL 修改了欧皇彩的解锁方式，你需要重新解锁欧皇彩。" & vbCrLf &
-                     "多谢各位的理解啦！", "重新解锁提醒")
         End If
         '重置滑稽彩
         If LastVersionCode <= 152 AndAlso Settings.Get(Of String)("UiLauncherThemeHide2").ToString.Split("|").Contains("12") Then
             Dim UnlockedTheme As New List(Of String)(Settings.Get(Of String)("UiLauncherThemeHide2").ToString.Split("|"))
             UnlockedTheme.Remove("12")
             Settings.Set("UiLauncherThemeHide2", UnlockedTheme.Join("|"c))
-            MyMsgBox("由于新版 PCL 修改了滑稽彩的解锁方式，你需要重新解锁滑稽彩。" & vbCrLf &
-                     "多谢各位的理解啦！", "重新解锁提醒")
         End If
         '移动自定义皮肤
         If LastVersionCode <= 161 AndAlso FileUtils.Exists(Paths.Base & "PCL\CustomSkin.png") AndAlso Not FileUtils.Exists(Paths.AppDataThenName & "CustomSkin.png") Then
@@ -525,16 +504,6 @@ Public Class FormMain
             Settings.Set("UiHiddenOtherHelp", False)
             Logger.Info("已解除帮助页面的隐藏")
         End If
-        '单向迁移微软登录结果（#4836）
-        If Not Settings.Get(Of Boolean)("CacheMsV2Migrated") Then
-            Settings.Set("CacheMsV2Migrated", True)
-            Settings.Set("CacheMsV2OAuthRefresh", Settings.Get(Of String)("CacheMsOAuthRefresh"))
-            Settings.Set("CacheMsV2Access", Settings.Get(Of String)("CacheMsAccess"))
-            Settings.Set("CacheMsV2ProfileJson", Settings.Get(Of String)("CacheMsProfileJson"))
-            Settings.Set("CacheMsV2Uuid", Settings.Get(Of String)("CacheMsUuid"))
-            Settings.Set("CacheMsV2Name", Settings.Get(Of String)("CacheMsName"))
-            Logger.Info("已从老版本迁移微软登录结果")
-        End If
         'Mod 命名设置迁移
         If Settings.HasSaved("ToolDownloadTranslate") AndAlso Not Settings.HasSaved("ToolDownloadTranslateV2") Then
             Settings.Set("ToolDownloadTranslateV2", Settings.Get(Of Integer)("ToolDownloadTranslate") + 1)
@@ -549,7 +518,7 @@ Public Class FormMain
         '输出更新日志
         If LastVersionCode <= 0 Then Return
         If HighestVersionCode >= VersionCode Then Return
-        ShowUpdateLog(HighestVersionCode)
+        Logger.Info($"版本迁移已完成：{HighestVersionCode} → {VersionCode}")
     End Sub
     Private Sub DowngradeSub(LastVersionCode As Integer)
         Logger.Info($"版本号从 {LastVersionCode} 降低到 {VersionCode}")
@@ -969,28 +938,11 @@ Public Class FormMain
                             Hint("请先下载游戏，再设置第三方登录！", HintType.Red)
                             Return
                         End If
-                        If AuthlibServer = "https://littleskin.cn/api/yggdrasil" Then
-                            'LittleSkin
-                            If MyMsgBox($"是否要在版本 {Target.Name} 中开启 LittleSkin 登录？" & vbCrLf &
-                                        "你可以在 版本设置 → 设置 → 服务器选项 中修改登录方式。", "第三方登录开启确认", "确定", "取消") = 2 Then
-                                Return
-                            End If
-                            Settings.Set("VersionServerLogin", 4, Instance:=Target)
-                            Settings.Set("VersionServerAuthServer", "https://littleskin.cn/api/yggdrasil", Instance:=Target)
-                            Settings.Set("VersionServerAuthRegister", "https://littleskin.cn/auth/register", Instance:=Target)
-                            Settings.Set("VersionServerAuthName", "LittleSkin 登录", Instance:=Target)
-                        Else
-                            '第三方 Authlib 服务器
-                            If MyMsgBox($"是否要在版本 {Target.Name} 中开启第三方登录？" & vbCrLf &
-                                        $"登录服务器：{AuthlibServer}" & vbCrLf & vbCrLf &
-                                        "你可以在 版本设置 → 设置 → 服务器选项 中修改登录方式。", "第三方登录开启确认", "确定", "取消") = 2 Then
-                                Return
-                            End If
-                            Settings.Set("VersionServerLogin", 4, Instance:=Target)
-                            Settings.Set("VersionServerAuthServer", AuthlibServer, Instance:=Target)
-                            Settings.Set("VersionServerAuthRegister", AuthlibServer.Replace("api/yggdrasil", "auth/register"), Instance:=Target)
-                            Settings.Set("VersionServerAuthName", "", Instance:=Target)
+                        If Not String.Equals(AuthlibServer.TrimEnd("/"c), SduSkinLogin.AuthServer, StringComparison.OrdinalIgnoreCase) Then
+                            Hint("此启动器仅支持 SDUcraft 皮肤站，不支持切换其他认证站点。", HintType.Red)
+                            Return
                         End If
+                        SduSkinLogin.EnsureConfiguration(Target)
                         If PageCurrent = PageType.InstanceSetup AndAlso PageCurrentSub = PageSubType.InstanceSetup Then
                             '正在服务器选项页，需要刷新设置项显示
                             FrmInstanceSetup.Reload()
@@ -1372,6 +1324,7 @@ Public Class FormMain
                 Case PageType.Download
                     If FrmDownloadLeft Is Nothing Then FrmDownloadLeft = New PageDownloadLeft
                     '页面枚举对应 Tag，不能依赖插入新项目后会变化的控件下标。
+                    SubType = PageDownloadLeft.NormalizePageType(If(SubType = -1, FrmDownloadLeft.PageID, SubType))
                     Dim DownloadItem = FrmDownloadLeft.PanItem.Children.OfType(Of MyListItem)().
                         Single(Function(Item) CInt(Item.Tag) = CInt(SubType))
                     DownloadItem.SetChecked(True, True, Stack = PageCurrent)
@@ -1380,7 +1333,10 @@ Public Class FormMain
                     CType(FrmSetupLeft.PanItem.Children(SubType), MyListItem).SetChecked(True, True, Stack = PageCurrent)
                 Case PageType.Other
                     If FrmOtherLeft Is Nothing Then FrmOtherLeft = New PageOtherLeft
-                    CType(FrmOtherLeft.PanItem.Children(SubType), MyListItem).SetChecked(True, True, Stack = PageCurrent)
+                    SubType = PageOtherLeft.NormalizePageType(If(SubType = -1, FrmOtherLeft.PageID, SubType))
+                    Dim OtherItem = FrmOtherLeft.PanItem.Children.OfType(Of MyListItem)().
+                        Single(Function(Item) CInt(Item.Tag) = CInt(SubType))
+                    OtherItem.SetChecked(True, True, Stack = PageCurrent)
             End Select
             PageChangeActual(Stack, SubType)
         Else
@@ -1388,7 +1344,10 @@ Public Class FormMain
             Select Case Stack.Page
                 Case PageType.InstanceSetup
                     If FrmInstanceLeft Is Nothing Then FrmInstanceLeft = New PageInstanceLeft
-                    CType(FrmInstanceLeft.PanItem.Children(SubType), MyListItem).SetChecked(True, True, Stack = PageCurrent)
+                    SubType = PageInstanceLeft.NormalizePageType(If(SubType = -1, FrmInstanceLeft.PageID, SubType))
+                    Dim InstanceItem = FrmInstanceLeft.PanItem.Children.OfType(Of MyListItem)().
+                        Single(Function(Item) CInt(Item.Tag) = CInt(SubType))
+                    InstanceItem.SetChecked(True, True, Stack = PageCurrent)
             End Select
             PageChangeActual(Stack, SubType)
         End If
@@ -1416,6 +1375,9 @@ Public Class FormMain
     ''' 切换现有页面的实际方法。
     ''' </summary>
     Private Sub PageChangeActual(Stack As PageStackData, Optional SubType As PageSubType = -1)
+        If Stack.Page = PageType.Download AndAlso SubType <> -1 Then SubType = PageDownloadLeft.NormalizePageType(SubType)
+        If Stack.Page = PageType.Other AndAlso SubType <> -1 Then SubType = PageOtherLeft.NormalizePageType(SubType)
+        If Stack.Page = PageType.InstanceSetup AndAlso SubType <> -1 Then SubType = PageInstanceLeft.NormalizePageType(SubType)
         If PageCurrent = Stack AndAlso (PageCurrentSub = SubType OrElse SubType = -1) Then Return
         If Stack.Page = PageType.InstanceSetup AndAlso PageInstanceLeft.Instance IsNot Nothing AndAlso McInstanceLock.IsLocked(PageInstanceLeft.Instance) Then
             Hint("该版本正在被修改，暂时无法进入版本设置！", HintType.Red)

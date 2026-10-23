@@ -30,7 +30,7 @@ Public Class PageInstanceLeft
     ''' <summary>
     ''' 勾选事件改变页面。
     ''' </summary>
-    Private Sub PageCheck(sender As FrameworkElement, e As RouteEventArgs) Handles ItemOverall.Check, ItemMod.Check, ItemModDisabled.Check, ItemSetup.Check, ItemModify.Check, ItemExport.Check
+    Private Sub PageCheck(sender As FrameworkElement, e As RouteEventArgs) Handles ItemOverall.Check, ItemMod.Check, ItemModDisabled.Check, ItemSetup.Check, ItemExport.Check
         '尚未初始化控件属性时，sender.Tag 为 Nothing，会导致切换到页面 0
         '若使用 IsLoaded，则会导致模拟点击不被执行（模拟点击切换页面时，控件的 IsLoaded 为 False）
         If sender.Tag IsNot Nothing Then PageChange(Val(sender.Tag))
@@ -38,6 +38,7 @@ Public Class PageInstanceLeft
 
     Public Function PageGet(Optional ID As FormMain.PageSubType = -1)
         If ID = -1 Then ID = PageID
+        ID = NormalizePageType(ID)
         Select Case ID
             Case FormMain.PageSubType.InstanceOverall
                 If FrmInstanceOverall Is Nothing Then FrmInstanceOverall = New PageInstanceOverall
@@ -54,9 +55,6 @@ Public Class PageInstanceLeft
             Case FormMain.PageSubType.InstanceExport
                 If FrmInstanceExport Is Nothing Then FrmInstanceExport = New PageInstanceExport
                 Return FrmInstanceExport
-            Case FormMain.PageSubType.InstanceModify
-                If FrmDownloadModify Is Nothing Then FrmDownloadModify = New PageDownloadModify
-                Return FrmDownloadModify
             Case Else
                 Throw New Exception("未知的版本设置子页面种类：" & ID)
         End Select
@@ -66,6 +64,7 @@ Public Class PageInstanceLeft
     ''' 切换现有页面。
     ''' </summary>
     Public Sub PageChange(ID As FormMain.PageSubType)
+        ID = NormalizePageType(ID)
         If PageID = ID Then Return
         If Instance IsNot Nothing AndAlso McInstanceLock.IsLocked(Instance) Then
             Hint("该版本正在被修改，请稍后再切换页面！", HintType.Red)
@@ -109,6 +108,7 @@ Public Class PageInstanceLeft
         Refresh(FrmMain.PageCurrentSub)
     End Sub
     Public Sub Refresh(SubType As FormMain.PageSubType)
+        SubType = NormalizePageType(SubType)
         If Instance IsNot Nothing AndAlso McInstanceLock.IsLocked(Instance) Then
             Hint("该版本正在被修改，请稍后再刷新！", HintType.Red)
             Return
@@ -120,11 +120,13 @@ Public Class PageInstanceLeft
             Case FormMain.PageSubType.InstanceExport
                 FrmInstanceExport?.RefreshAll()
                 ItemExport.Checked = True
-            Case FormMain.PageSubType.InstanceModify
-                FrmDownloadModify?.PageLoaderRestart()
-                ItemModify.Checked = True
         End Select
     End Sub
+
+    ''' <summary>兼容旧页面编号：版本修改入口已移除，统一返回概览。</summary>
+    Public Shared Function NormalizePageType(ID As FormMain.PageSubType) As FormMain.PageSubType
+        Return If(ID = FormMain.PageSubType.InstanceModify, FormMain.PageSubType.InstanceOverall, ID)
+    End Function
 
     Public Sub Reset(sender As Object, e As EventArgs)
         If MyMsgBox("是否要初始化该版本的版本独立设置？该操作不可撤销。", "初始化确认",, "取消", IsWarn:=True) = 1 Then

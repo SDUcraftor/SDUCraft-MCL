@@ -220,6 +220,8 @@
     <Compile Include="Modules\Minecraft\ModModpack.vb" />
     <Compile Include="Modules\ThirdParty\DragHelper.vb" />
     <Compile Include="Modules\Sdu\SduDownloadItem.vb" />
+    <Compile Include="Modules\Sdu\SduNetworkCheck.vb" />
+    <Compile Include="Modules\Sdu\SduSkinLogin.vb" />
     <Compile Include="Modules\Sdu\SduDownloadReadStore.vb" />
     <Compile Include="Modules\Sdu\SduLoaderBridge.vb" />
     <Compile Include="Modules\Sdu\SduBareClientInstaller.vb" />
@@ -291,27 +293,14 @@
     <Compile Include="Pages\PageDownload\PageDownloadInstall.xaml.vb">
       <DependentUpon>PageDownloadInstall.xaml</DependentUpon>
     </Compile>
-    <Compile Include="Pages\PageDownload\PageDownloadModify.vb" />
     <Compile Include="Pages\PageDownload\Resource\PageDownloadCompDetail.xaml.vb">
       <DependentUpon>PageDownloadCompDetail.xaml</DependentUpon>
-    </Compile>
-    <Compile Include="Pages\PageLaunch\MyMsgLogin.xaml.vb">
-      <DependentUpon>MyMsgLogin.xaml</DependentUpon>
     </Compile>
     <Compile Include="Pages\PageLaunch\PageLoginAuth.xaml.vb">
       <DependentUpon>PageLoginAuth.xaml</DependentUpon>
     </Compile>
     <Compile Include="Pages\PageLaunch\PageLoginAuthSkin.xaml.vb">
       <DependentUpon>PageLoginAuthSkin.xaml</DependentUpon>
-    </Compile>
-    <Compile Include="Pages\PageLaunch\PageLoginMs.xaml.vb">
-      <DependentUpon>PageLoginMs.xaml</DependentUpon>
-    </Compile>
-    <Compile Include="Pages\PageLaunch\PageLoginMsSkin.xaml.vb">
-      <DependentUpon>PageLoginMsSkin.xaml</DependentUpon>
-    </Compile>
-    <Compile Include="Pages\PageLaunch\PageLoginNideSkin.xaml.vb">
-      <DependentUpon>PageLoginNideSkin.xaml</DependentUpon>
     </Compile>
     <Compile Include="Pages\PageLink\PageLinkMain.xaml.vb">
       <DependentUpon>PageLinkMain.xaml</DependentUpon>
@@ -349,12 +338,6 @@
     </Compile>
     <Compile Include="Pages\PageLaunch\MySkin.xaml.vb">
       <DependentUpon>MySkin.xaml</DependentUpon>
-    </Compile>
-    <Compile Include="Pages\PageLaunch\PageLoginNide.xaml.vb">
-      <DependentUpon>PageLoginNide.xaml</DependentUpon>
-    </Compile>
-    <Compile Include="Pages\PageLaunch\PageLoginLegacy.xaml.vb">
-      <DependentUpon>PageLoginLegacy.xaml</DependentUpon>
     </Compile>
     <Compile Include="Pages\PageSelectRight.xaml.vb">
       <DependentUpon>PageSelectRight.xaml</DependentUpon>
@@ -547,27 +530,11 @@
       <SubType>Designer</SubType>
       <Generator>MSBuild:Compile</Generator>
     </Page>
-    <Page Include="Pages\PageLaunch\MyMsgLogin.xaml">
-      <Generator>MSBuild:Compile</Generator>
-      <SubType>Designer</SubType>
-    </Page>
     <Page Include="Pages\PageLaunch\PageLoginAuth.xaml">
       <Generator>MSBuild:Compile</Generator>
       <SubType>Designer</SubType>
     </Page>
     <Page Include="Pages\PageLaunch\PageLoginAuthSkin.xaml">
-      <Generator>MSBuild:Compile</Generator>
-      <SubType>Designer</SubType>
-    </Page>
-    <Page Include="Pages\PageLaunch\PageLoginMs.xaml">
-      <SubType>Designer</SubType>
-      <Generator>MSBuild:Compile</Generator>
-    </Page>
-    <Page Include="Pages\PageLaunch\PageLoginMsSkin.xaml">
-      <SubType>Designer</SubType>
-      <Generator>MSBuild:Compile</Generator>
-    </Page>
-    <Page Include="Pages\PageLaunch\PageLoginNideSkin.xaml">
       <Generator>MSBuild:Compile</Generator>
       <SubType>Designer</SubType>
     </Page>
@@ -592,14 +559,6 @@
       <Generator>MSBuild:Compile</Generator>
     </Page>
     <Page Include="Pages\PageLaunch\MySkin.xaml">
-      <SubType>Designer</SubType>
-      <Generator>MSBuild:Compile</Generator>
-    </Page>
-    <Page Include="Pages\PageLaunch\PageLoginNide.xaml">
-      <SubType>Designer</SubType>
-      <Generator>MSBuild:Compile</Generator>
-    </Page>
-    <Page Include="Pages\PageLaunch\PageLoginLegacy.xaml">
       <SubType>Designer</SubType>
       <Generator>MSBuild:Compile</Generator>
     </Page>

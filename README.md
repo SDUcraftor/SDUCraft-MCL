@@ -26,9 +26,12 @@
 | --- | --- | --- |
 | `RestrictMcDownload` | `True`，部分安装 / 下载路径受限 | 改为 `False` |
 | 启动页下载速览 | 无 | 新增 SDUcraft 下载速览面板（含未读标记、分页加载） |
-| 内置整合包下载页 | 无 | 侧栏新增「SDUcraft 整合包」，可搜索服务器官网项目并下载 |
+| 内置整合包下载页 | 无 | 下载页默认打开顶部「SDUcraft 整合包」，使用整合包方块图标；移除原版游戏和公共整合包入口，可搜索服务器官网项目并下载 |
 | 整合包安装衔接 | 无 | 下载结果交给 PCL 现有安装器（含启动器包、`mrpack` 重打包适配） |
 | 自动更新 | 开源分支已移除更新通知 | 保持禁用，检查更新仅提示本版本不含更新功能 |
+| 启动网络检查 | 无 SDUcraft 专项检查 | 后台请求官网，连接失败重试后提示连接校园网 |
+| 登录方式 | 微软正版、离线及第三方登录 | 仅保留 SDUcraft 皮肤站账号登录，旧实例认证设置自动统一 |
+| 帮助与功能入口 | 通用帮助、百宝箱、反馈、投票及版本修改 | 内置可搜索的 SDUcraft 使用指南与官网入口；移除百宝箱、反馈、投票和版本修改页面入口 |
 | 自定义主页刷新 | 清空全部子项 | 仅清空普通主页内容，保留 SDUcraft 面板 |
 
 ### 可读性重构
@@ -85,16 +88,34 @@ msbuild "Plain Craft Launcher 2\Plain Craft Launcher 2.vbproj" -p:Configuration=
 - VB 主工程通过 `ProjectReference` 构建 `PCLCS` 与 `MeloongCore`，再将生成的 DLL 嵌入资源；干净检出不需要预先准备 `PCLCS/bin`。
 - 安装任务生命周期回归可运行 `./tests/Run-SduLoaderBridgeTests.ps1`，不下载整合包或修改游戏目录。
 - `NuGet.local.config` 是本机构建配置（含本机 NuGet 源路径），已加入 `.gitignore`。在其他机器构建时请按实际环境替换为自己的 NuGet 源。
-- 官方 CI 会通过 Secrets 注入 `PCL_MS_CLIENT_ID`、`PCL_CURSEFORGE_API_KEY`；未配置时对应值为空，不影响编译。
+- 登录仅使用 `https://skin.sducraft.cn/api/yggdrasil`，已移除微软登录 Client ID 配置入口。CurseForge API Key 仍在「设置 → 启动 → SDUcraft 接入配置」中填写，或通过环境变量 `PCL_CURSEFORGE_API_KEY` 提供。
+
+## 启动网络与皮肤站登录
+
+- 主窗口加载后在后台请求 `https://www.sducraft.top/`，只读取响应头；默认每次请求超时 4 秒、最多尝试两次。无法建立连接时弹窗提示连接山东大学校园网，每个进程只检查一次，不阻塞窗口启动。HTTP 错误状态也表示已连通，避免把网站自身故障误判为不在校园网。
+- 首页仅显示「SDUcraft 皮肤站」登录和官网入口。注册、找回密码、皮肤管理均指向 `skin.sducraft.cn`，不再提供正版、离线、统一通行证或其他认证服务器入口。
+- 选择实例和启动游戏时，旧认证设置统一为该皮肤站，登录与 Authlib-Injector 使用同一个地址。其他认证站点保存的账号、密码及令牌不会自动带入此站；原已属于该皮肤站的账号缓存可继续使用。
+- 已移除对应的旧登录页面、微软 OAuth/Xbox 登录与离线身份构造流程，以及微软 Client ID、离线皮肤设置。
+- 启动时保留「SDUcraft 改版说明」，介绍改版来源、皮肤站登录、整合包与校园网要求。购买正版、赞助、旧快照版欢迎、累计使用次数和主题重新解锁提示移除；升级迁移结果写入日志，更新日志可按需查看。校园网检查、实际错误、首次使用协议及数据操作确认保留。
+- 回归测试：`tests/Run-SduNetworkCheckTests.ps1`、`tests/Run-SduSkinLoginTests.ps1`。测试不使用真实账号或密码。
+
+## SDUcraft 帮助中心
+
+- 此分支固定开启所有实例的版本隔离，全局与实例设置均不再提供开关；旧的关闭设置会在读取实例游戏目录时同步为开启。存档、mods 和配置使用各自的 `versions/<实例名>/` 目录。原有公共目录中的文件保留，需要继续使用时请手动复制到对应实例目录。
+- 已移除原版 Minecraft 正式版／测试版更新提示的选项与通知处理，历史开关不再触发弹窗；整合包安装所需的版本列表获取仍保留。
+
+- 「更多」仅保留「帮助」与「关于与鸣谢」。帮助页提供新手流程、皮肤站登录、校园网排查、整合包更新、模组备份恢复、服务器信息与启动故障说明，支持本地搜索和折叠阅读，无需联网加载帮助列表。
+- 官网入口采用实际导航地址：[文档与指南](https://www.sducraft.top/more/doc)、[服务器列表](https://www.sducraft.top/intro/serverList)、[公告](https://www.sducraft.top/community/notice)、[社团介绍与交流方式](https://www.sducraft.top/intro)。服务器地址、版本和活动以官网为准。
+- 版本设置保留「概览」「设置」「Mod 管理」「导出」，移除「修改」页面及对应功能隐藏选项。旧修改页跳转返回概览，旧百宝箱、反馈、投票跳转返回帮助。
 
 ## 许可、署名与合规
 
-本分支属于 PCL 的「重度使用（基于本仓库修改）」，遵循 [《PCL 分发有限许可》](LICENCE)（[原文](https://shimo.im/docs/rGrd8pY8xWkt6ryW#anchor-X0bo)）的要求：
+本分支属于基于 PCL 源码修改的第三方版本，上游采用 [《PCL 分发有限许可》](LICENCE)（[原文](https://shimo.im/docs/rGrd8pY8xWkt6ryW#anchor-X0bo)）。本分支当前的署名与功能处理如下：
 
 1. 已明确声明本作品是第三方基于 PCL 独立进行的二次创作，**非官方版本**。
 2. 软件显示名称以 `Plain Craft Launcher (PCL)` 开头，并附加表示第三方修改的后缀。
 3. 在「关于」页面首位保留龙腾猫跃的署名及赞助链接，公开源代码，并继续使用 `LICENCE` 文件作为指引。
-4. 保留与 `McLaunchPrecheck` 相一致（或更强）的 Minecraft 正版购买提示。
+4. 本修改版按维护者需求移除了自动购买正版提醒；不提供正版账号或游戏所有权验证功能。
 5. 不提供与 PCL 赞助解锁类似的付费解锁功能。
 
 > 维护者请注意：`Plain Craft Launcher 2/Pages/PageOther/PageOtherAbout.xaml` 中的龙腾猫跃署名、赞助链接以及上游版权声明均为合规必需内容，**请勿删除**。

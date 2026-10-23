@@ -190,28 +190,7 @@ Public Module ModMinecraft
             If value Is Nothing Then Return
             '重置缓存的下载文件夹
             PageDownloadResourceDetail.CachedFolder.Clear()
-            '统一通行证重判
-            If AniControlEnabled = 0 AndAlso
-               Settings.Get(Of String)("VersionServerNide", Instance:=value) <> Settings.Get(Of String)("CacheNideServer") AndAlso
-               Settings.Get(Of Integer)("VersionServerLogin", Instance:=value) = 3 Then
-                Settings.Set("CacheNideAccess", "")
-                Logger.Info("服务器改变，要求重新登录统一通行证")
-            End If
-            If Settings.Get(Of Integer)("VersionServerLogin", Instance:=value) = 3 Then
-                Settings.Set("CacheNideServer", Settings.Get(Of String)("VersionServerNide", Instance:=value))
-            End If
-            'Authlib-Injector 重判
-            If AniControlEnabled = 0 AndAlso
-               Settings.Get(Of String)("VersionServerAuthServer", Instance:=value) <> Settings.Get(Of String)("CacheAuthServerServer") AndAlso
-               Settings.Get(Of Integer)("VersionServerLogin", Instance:=value) = 4 Then
-                Settings.Set("CacheAuthAccess", "")
-                Logger.Info("服务器改变，要求重新登录 Authlib-Injector")
-            End If
-            If Settings.Get(Of Integer)("VersionServerLogin", Instance:=value) = 4 Then
-                Settings.Set("CacheAuthServerServer", Settings.Get(Of String)("VersionServerAuthServer", Instance:=value))
-                Settings.Set("CacheAuthServerName", Settings.Get(Of String)("VersionServerAuthName", Instance:=value))
-                Settings.Set("CacheAuthServerRegister", Settings.Get(Of String)("VersionServerAuthRegister", Instance:=value))
-            End If
+            SduSkinLogin.EnsureConfiguration(value)
         End Set
     End Property
 
@@ -239,42 +218,15 @@ Public Module ModMinecraft
         ''' </summary>
         Public ReadOnly Property PathIndie As String
             Get
-                If Not Settings.HasSaved("VersionArgumentIndieV2", Instance:=Me) Then
-                    If Not IsLoaded Then Load()
-                    '决定该版本是否应该被隔离
-                    Dim ShouldBeIndie =
-                    Function() As Boolean
-                        '从老的版本独立设置中迁移：-1 未决定，0 使用全局设置，1 手动开启，2 手动关闭
-                        If Settings.HasSaved("VersionArgumentIndie", Instance:=Me) AndAlso Settings.Get(Of Integer)("VersionArgumentIndie", Instance:=Me) > 0 Then
-                            Logger.Info($"版本隔离初始化（{Name}）：从老的版本独立设置中迁移")
-                            Return Settings.Get(Of Integer)("VersionArgumentIndie", Instance:=Me) = 1
-                        End If
-                        '若版本文件夹下包含 mods 或 saves 文件夹，则自动开启版本隔离
-                        Dim ModFolder = DirectoryUtils.GetInfo(PathVersion & "mods\")
-                        Dim SaveFolder = DirectoryUtils.GetInfo(PathVersion & "saves\")
-                        If (ModFolder.Exists AndAlso ModFolder.EnumerateFiles.Any) OrElse (SaveFolder.Exists AndAlso SaveFolder.EnumerateDirectories.Any) Then
-                            Logger.Info($"版本隔离初始化（{Name}）：版本文件夹下存在 mods 或 saves 文件夹，自动开启")
-                            Return True
-                        End If
-                        '根据全局的默认设置决定是否隔离
-                        Dim IsRelease As Boolean = State <> McInstanceState.Fool AndAlso State <> McInstanceState.Old AndAlso State <> McInstanceState.Snapshot
-                        Logger.Info($"版本隔离初始化（{Name}）：从全局默认设置中（{Settings.Get(Of Integer)("LaunchArgumentIndieV2")}）判断，State {State}，IsRelease {IsRelease}，Modable {Modable}")
-                        Select Case Settings.Get(Of Integer)("LaunchArgumentIndieV2")
-                            Case 0 '关闭
-                                Return False
-                            Case 1 '仅隔离可安装 Mod 的版本
-                                Return Modable
-                            Case 2 '仅隔离非正式版
-                                Return Not IsRelease
-                            Case 3 '隔离非正式版与可安装 Mod 的版本
-                                Return Not IsRelease OrElse Modable
-                            Case Else '隔离所有版本
-                                Return True
-                        End Select
-                    End Function
-                    Settings.Set("VersionArgumentIndieV2", ShouldBeIndie(), Instance:=Me)
+                'SDUcraft 固定使用实例目录；历史的全局或实例“关闭隔离”设置不再决定游戏目录。
+                '同步新旧设置，保证导出实例的配置也保持隔离；重复读取不会反复写入。
+                If Not Settings.Get(Of Boolean)("VersionArgumentIndieV2", Instance:=Me) Then
+                    Settings.Set("VersionArgumentIndieV2", True, Instance:=Me)
                 End If
-                Return If(Settings.Get(Of Boolean)("VersionArgumentIndieV2", Instance:=Me), PathVersion, McFolderSelected)
+                If Settings.Get(Of Integer)("VersionArgumentIndie", Instance:=Me) <> 1 Then
+                    Settings.Set("VersionArgumentIndie", 1, Instance:=Me)
+                End If
+                Return PathVersion
             End Get
         End Property
 
@@ -1416,7 +1368,7 @@ OnLoaded:
             Case "Nide"
                 Url = "https://auth.mc-user.com:233/" & If(McInstanceSelected Is Nothing, Settings.Get(Of String)("CacheNideServer"), Settings.Get(Of String)("VersionServerNide", Instance:=McInstanceSelected)) & "/sessionserver/session/minecraft/profile/"
             Case "Auth"
-                Url = If(McInstanceSelected Is Nothing, Settings.Get(Of String)("CacheAuthServerServer"), Settings.Get(Of String)("VersionServerAuthServer", Instance:=McInstanceSelected)) & "/sessionserver/session/minecraft/profile/"
+                Url = SduSkinLogin.AuthServer & "/sessionserver/session/minecraft/profile/"
             Case Else
                 Throw New ArgumentException("皮肤地址种类无效：" & If(Type, "null"))
         End Select
@@ -2083,41 +2035,6 @@ OnLoaded:
 
 #End Region
 
-    ''' <summary>
-    ''' 发送 Minecraft 更新提示。
-    ''' </summary>
-    Public Sub McDownloadClientUpdateHint(VersionName As String, Json As JObject)
-        Try
-
-            '获取对应版本
-            Dim Version As JToken = Nothing
-            For Each Token In Json("versions")
-                If Token("id") IsNot Nothing AndAlso Token("id").ToString = VersionName Then
-                    Version = Token
-                    Exit For
-                End If
-            Next
-            '进行提示
-            If Version Is Nothing Then Return
-            Dim Time As Date = Version("releaseTime")
-            Dim MsgBoxText As String = $"新版本：{VersionName}{vbCrLf}" &
-                If((Date.Now - Time).TotalDays > 1, "更新时间：" & Time.ToString, "更新于：" & StringUtils.FormatTimeSpan(Time - Date.Now, False))
-            Dim MsgResult = MyMsgBox(MsgBoxText, "Minecraft 更新提示", "确定", "下载", If((Date.Now - Time).TotalHours > 3, "更新日志", ""),
-                Button3Action:=Sub() McUpdateLogShow(Version))
-            '弹窗结果
-            If MsgResult = 2 Then
-                '下载
-                RunInUi(
-                Sub()
-                    PageDownloadInstall.VersionWaitingSelect = VersionName
-                    FrmMain.PageChange(FormMain.PageType.Download, FormMain.PageSubType.DownloadInstall)
-                End Sub)
-            End If
-
-        Catch ex As Exception
-            Logger.Error(ex, $"Minecraft 更新提示发送失败（{If(VersionName, "Nothing")}）")
-        End Try
-    End Sub
 
     ''' <summary>
     ''' 打码字符串中的 AccessToken。

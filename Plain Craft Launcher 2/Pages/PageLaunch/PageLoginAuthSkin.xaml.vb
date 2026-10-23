@@ -4,7 +4,7 @@ Public Class PageLoginAuthSkin
         InitializeComponent()
         Skin.Loader = PageLaunchLeft.SkinAuth
     End Sub
-    Private Sub PageLoginLegacy_Loaded() Handles Me.Loaded
+    Private Sub PageLoginAuthSkin_Loaded() Handles Me.Loaded
         Skin.Loader.Start()
     End Sub
 
@@ -15,14 +15,15 @@ Public Class PageLoginAuthSkin
         TextName.Text = Settings.Get(Of String)("CacheAuthName")
         TextEmail.Text = Settings.Get(Of String)("CacheAuthUsername")
         TextEmail.Visibility = If(Settings.Get(Of Boolean)("UiLauncherEmail"), Visibility.Collapsed, Visibility.Visible)
-        PageLoginLegacy_Loaded()
+        PageLoginAuthSkin_Loaded()
     End Sub
     ''' <summary>
     ''' 获取当前页面的登录信息。
     ''' </summary>
     Public Shared Function GetLoginData() As McLoginServer
-        Dim Server As String = If(IsNothing(McInstanceSelected), Settings.Get(Of String)("CacheAuthServerServer"), Settings.Get(Of String)("VersionServerAuthServer", Instance:=McInstanceSelected)) & "/authserver"
-        Return New McLoginServer(McLoginType.Auth) With {.Token = "Auth", .BaseUrl = Server, .UserName = Settings.Get(Of String)("CacheAuthUsername"), .Password = Settings.Get(Of String)("CacheAuthPass"), .Description = "Authlib-Injector", .Type = McLoginType.Auth}
+        SduSkinLogin.EnsureConfiguration(McInstanceSelected)
+        Dim Server As String = SduSkinLogin.LoginServer
+        Return New McLoginServer(McLoginType.Auth) With {.Token = "Auth", .BaseUrl = Server, .UserName = Settings.Get(Of String)("CacheAuthUsername"), .Password = Settings.Get(Of String)("CacheAuthPass"), .Description = SduSkinLogin.DisplayName, .Type = McLoginType.Auth}
     End Function
 
     Private Sub PageLoginAuthSkin_MouseEnter(sender As Object, e As MouseEventArgs) Handles PanData.MouseEnter
@@ -78,8 +79,7 @@ Public Class PageLoginAuthSkin
     End Sub
 
     Private Sub Skin_Click(sender As Object, e As MouseButtonEventArgs) Handles Skin.Click
-        Dim Address As String = If(McInstanceSelected IsNot Nothing, Settings.Get(Of String)("VersionServerAuthRegister", Instance:=McInstanceSelected), Settings.Get(Of String)("CacheAuthServerRegister"))
-        If String.IsNullOrEmpty(New ValidateHttp().Validate(Address)) Then OpenWebsite(Address.Replace("/auth/register", "/user/closet"))
+        OpenWebsite(SduSkinLogin.ClosetPage)
     End Sub
 
 End Class

@@ -221,26 +221,6 @@ Public Class PageSelectLeft
                 '提示
                 If IsReplace Then Return
                 If ShowHint Then Hint("文件夹 " & DisplayName & " 已添加！", HintType.Green)
-                '检查是否为根目录整合包，自动关闭版本隔离
-                '1. 根目录中存在数个 Mod
-                Dim ModFolder = DirectoryUtils.GetInfo(FolderPath & "mods\")
-                If Not (ModFolder.Exists AndAlso ModFolder.EnumerateFiles.Count >= 3) Then Return
-                '2. 版本数较少，可能为整合包
-                Dim VersionFolderInfo = DirectoryUtils.GetInfo(FolderPath & "versions\")
-                If Not (VersionFolderInfo.Exists AndAlso VersionFolderInfo.EnumerateDirectories.Count <= 3) Then Return
-                '3. 能够找到可安装 Mod 的版本
-                For Each VersionFolder In VersionFolderInfo.EnumerateDirectories
-                    Dim Instance As New McInstance(VersionFolder.FullName)
-                    Instance.Load()
-                    If Not Instance.Modable Then Continue For
-                    '4. 该版本的隔离文件夹下不存在 mods
-                    Dim ModIndieFolder = DirectoryUtils.GetInfo(Instance.PathVersion & "mods\")
-                    If ModIndieFolder.Exists AndAlso ModIndieFolder.EnumerateFiles.Any Then Return
-                    '满足以上全部条件则视为根目录整合包
-                    Settings.Set("VersionArgumentIndie", 2, Instance:=Instance)
-                    Settings.Set("VersionArgumentIndieV2", False, Instance:=Instance)
-                    Logger.Warn($"已自动关闭单版本隔离：{Instance.Name}")
-                Next
             Catch ex As Exception
                 Logger.Error(ex, "向文件夹列表中添加新文件夹失败")
             End Try

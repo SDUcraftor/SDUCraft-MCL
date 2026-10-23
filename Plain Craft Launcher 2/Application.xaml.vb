@@ -244,47 +244,18 @@ RetryCacheCheck:
 
     '控件模板事件
     Private Sub MyIconButton_Click(sender As Object, e As EventArgs)
-        Select Case Settings.Get(Of McLoginType)("LoginType")
-            Case McLoginType.Ms
-                '微软
-                Dim MsJson As JObject = Settings.Get(Of String)("LoginMsJson").DeserializeJson()
-                MsJson.Remove(sender.Tag)
-                Settings.Set("LoginMsJson", MsJson.ToString(Newtonsoft.Json.Formatting.None))
-                If FrmLoginMs.ComboAccounts.SelectedItem Is sender.Parent Then FrmLoginMs.ComboAccounts.SelectedIndex = 0
-                FrmLoginMs.ComboAccounts.Items.Remove(sender.Parent)
-            Case McLoginType.Legacy
-                '离线
-                Dim Names As New List(Of String)
-                Names.AddRange(Settings.Get(Of String)("LoginLegacyName").ToString.Split("¨"))
-                Names.Remove(sender.Tag)
-                Settings.Set("LoginLegacyName", Names.Join("¨"c))
-                FrmLoginLegacy.ComboName.ItemsSource = Names
-                FrmLoginLegacy.ComboName.Text = If(Names.Any, Names(0), "")
-            Case Else
-                '第三方
-                Dim Token As String = Settings.Get(Of McLoginType)("LoginType").ToString()
-                Dim Dict As New Dictionary(Of String, String)
-                Dim Names As New List(Of String)
-                Dim Passs As New List(Of String)
-                If Not Settings.Get(Of String)("Login" & Token & "Email") = "" Then Names.AddRange(Settings.Get(Of String)("Login" & Token & "Email").Split("¨"))
-                If Not Settings.Get(Of String)("Login" & Token & "Pass") = "" Then Passs.AddRange(Settings.Get(Of String)("Login" & Token & "Pass").Split("¨"))
-                For i = 0 To Names.Count - 1
-                    Dict.Add(Names(i), Passs(i))
-                Next
-                Dict.Remove(sender.Tag)
-                Settings.Set("Login" & Token & "Email", Dict.Keys.Join("¨"c))
-                Settings.Set("Login" & Token & "Pass", Dict.Values.Join("¨"c))
-                Select Case Token
-                    Case "Nide"
-                        FrmLoginNide.ComboName.ItemsSource = Dict.Keys
-                        FrmLoginNide.ComboName.Text = If(Dict.Keys.Any, Dict.Keys(0), "")
-                        FrmLoginNide.TextPass.Password = If(Dict.Values.Any, Dict.Values(0), "")
-                    Case "Auth"
-                        FrmLoginAuth.ComboName.ItemsSource = Dict.Keys
-                        FrmLoginAuth.ComboName.Text = If(Dict.Keys.Any, Dict.Keys(0), "")
-                        FrmLoginAuth.TextPass.Password = If(Dict.Values.Any, Dict.Values(0), "")
-                End Select
-        End Select
+        Dim Dict As New Dictionary(Of String, String)
+        Dim Names = Settings.Get(Of String)("LoginAuthEmail").Split("¨"c)
+        Dim Passwords = Settings.Get(Of String)("LoginAuthPass").Split("¨"c)
+        For Index = 0 To Names.Length - 1
+            If Names(Index) <> "" Then Dict(Names(Index)) = If(Index < Passwords.Length, Passwords(Index), "")
+        Next
+        Dict.Remove(sender.Tag)
+        Settings.Set("LoginAuthEmail", Dict.Keys.Join("¨"c))
+        Settings.Set("LoginAuthPass", Dict.Values.Join("¨"c))
+        FrmLoginAuth.ComboName.ItemsSource = Dict.Keys
+        FrmLoginAuth.ComboName.Text = If(Dict.Any(), Dict.Keys.First(), "")
+        FrmLoginAuth.TextPass.Password = If(Dict.Any(), Dict.Values.First(), "")
     End Sub
 
 End Class
