@@ -139,7 +139,7 @@ Public Class PageDownloadSdu
 
         Dim Keyword = TextFilter.Text.Trim()
         Dim Available = SduDownloadItems.Where(Function(Item) Item.PreferredFile IsNot Nothing).
-            OrderByDescending(Function(Item) Item.IsNew).ThenByDescending(Function(Item) Item.LatestTime).ToList()
+            OrderByDescending(Function(Item) Item.IsNew).ThenByDescending(Function(Item) Item.PublishedTime).ToList()
         Dim Matched = Available.Where(
             Function(Item)
                 If Keyword = "" Then Return True

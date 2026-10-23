@@ -15,10 +15,16 @@ Partial Public Class PageLaunchRight
         Dim Zoned = SduDownloadItem.ParseList("[{""id"":""timezone"",""publish_date"":""2026-10-23T08:00:00+08:00""}]")(0)
         Check(Zoned.PublishDate = "2026-10-23T08:00:00+08:00", "JSON parsing changed the original timezone")
         Dim Json = New Newtonsoft.Json.Linq.JArray From {
-            New Newtonsoft.Json.Linq.JObject From {{"id", "old"}, {"publish_date", Now.AddDays(-20).ToString("O")}},
+            New Newtonsoft.Json.Linq.JObject From {{"id", "old"}, {"publish_date", Now.AddDays(-20).ToString("O")}, {"modify_date", Now.ToString("O")}},
             New Newtonsoft.Json.Linq.JObject From {{"id", "future"}, {"publish_date", Now.AddDays(2).ToString("O")}},
-            New Newtonsoft.Json.Linq.JObject From {{"id", "new"}, {"modify_date", Now.AddDays(-1).ToString("O")}}}
+            New Newtonsoft.Json.Linq.JObject From {{"id", "new"}, {"publish_date", Now.AddDays(-1).ToString("O")}}}
         Check(SduDownloadItem.ParseList(Json.ToString())(0).Id = "new", "Recent content is not pinned above other dates")
+        Check(Not SduDownloadItem.ParseList(Json.ToString()).First(Function(Item) Item.Id = "old").IsNew, "Editing an old item made it new")
+        Check(Not New SduDownloadItem With {.ModifyDate = Now.ToString("O")}.IsNew, "Missing publication date fell back to modification time")
+        Dim OldItems = New Newtonsoft.Json.Linq.JArray From {
+            New Newtonsoft.Json.Linq.JObject From {{"id", "older"}, {"publish_date", Now.AddYears(-1).ToString("O")}, {"modify_date", Now.ToString("O")}},
+            New Newtonsoft.Json.Linq.JObject From {{"id", "later"}, {"publish_date", Now.AddDays(-20).ToString("O")}}}
+        Check(SduDownloadItem.ParseList(OldItems.ToString())(0).Id = "later", "Modified older item jumped above a later publication")
         Console.WriteLine("PASS: seven-day badge boundary, future/missing dates, China time and recent-first ordering")
 
         For Each Suffix In {".zip", ".ZIP", ".mrpack", ".7z", ".rar", ".tar.gz"}

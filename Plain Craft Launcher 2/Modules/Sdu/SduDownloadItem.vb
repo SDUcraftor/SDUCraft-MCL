@@ -46,15 +46,16 @@ Public Class SduDownloadItem
     ''' <summary>最后修改日期，可能为空。</summary>
     Public Property ModifyDate As String = String.Empty
 
-    Public ReadOnly Property LatestTime As DateTimeOffset?
+    ''' <summary>卡片展示、上新标记与排序共用的发布时间。</summary>
+    Public ReadOnly Property PublishedTime As DateTimeOffset?
         Get
-            Return NewestTime(ModifyDate, PublishDate)
+            Return NewestTime(PublishDate)
         End Get
     End Property
 
     Public ReadOnly Property IsNew As Boolean
         Get
-            Return IsRecent(LatestTime, DateTimeOffset.UtcNow)
+            Return IsRecent(PublishedTime, DateTimeOffset.UtcNow)
         End Get
     End Property
 
@@ -78,7 +79,7 @@ Public Class SduDownloadItem
             OfType(Of JObject)().
             Select(AddressOf FromJson).
             OrderByDescending(Function(Item) Item.IsNew).
-            ThenByDescending(Function(Item) Item.LatestTime).
+            ThenByDescending(Function(Item) Item.PublishedTime).
             Take(MaxItemCount).
             ToList()
     End Function

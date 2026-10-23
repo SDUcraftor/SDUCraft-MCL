@@ -19,6 +19,12 @@ Public Class SduGameDownload
     Public Property IntroHtml As String = String.Empty
     Public Property Files As New List(Of SduGameDownloadFile)
 
+    Public ReadOnly Property PublishedTime As DateTimeOffset?
+        Get
+            Return SduDownloadItem.NewestTime(PublishDate)
+        End Get
+    End Property
+
     Public ReadOnly Property LatestTime As DateTimeOffset?
         Get
             Return SduDownloadItem.NewestTime(ModifyDate, PublishDate, PreferredFile?.ModifyDate)
@@ -27,7 +33,7 @@ Public Class SduGameDownload
 
     Public ReadOnly Property IsNew As Boolean
         Get
-            Return SduDownloadItem.IsRecent(LatestTime, DateTimeOffset.UtcNow)
+            Return SduDownloadItem.IsRecent(PublishedTime, DateTimeOffset.UtcNow)
         End Get
     End Property
 
@@ -76,7 +82,7 @@ Public Module SduModpackService
 
         '只显示官网上提供可安装压缩包的项目；纯介绍项或没有 Windows 文件的历史项目不会误装。
         Return Downloads.Where(Function(Download) Download.PreferredFile IsNot Nothing).
-            OrderByDescending(Function(Item) Item.IsNew).ThenByDescending(Function(Item) Item.LatestTime).ToList()
+            OrderByDescending(Function(Item) Item.IsNew).ThenByDescending(Function(Item) Item.PublishedTime).ToList()
     End Function
 
     Private Function ParseDownloads(Json As String) As List(Of SduGameDownload)

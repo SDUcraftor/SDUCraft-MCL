@@ -94,6 +94,19 @@ foreach ($case in $cases) {
     }
 }
 $recordType = $assembly.GetType('PCL.SduPackRecord', $true)
+$badgeItem = $assembly.CreateInstance('PCL.SduGameDownload')
+$badgeItem.PublishDate = [DateTimeOffset]::UtcNow.AddYears(-1).ToString('O')
+$badgeItem.ModifyDate = [DateTimeOffset]::UtcNow.ToString('O')
+$badgeFile = $assembly.CreateInstance('PCL.SduGameDownloadFile')
+$badgeFile.ModifyDate = $badgeItem.ModifyDate
+$badgeItem.Files.Add($badgeFile)
+Check (-not $badgeItem.IsNew) 'Editing a project or its file made an old publication new'
+Check ($badgeItem.LatestTime -gt $badgeItem.PublishedTime) 'Update check lost the newer modification time'
+$badgeItem.PublishDate = [DateTimeOffset]::UtcNow.AddDays(-1).ToString('O')
+Check ($badgeItem.IsNew) 'Recent publication is not new'
+$badgeItem.PublishDate = ''
+Check (-not $badgeItem.IsNew) 'Missing publication date fell back to file modification time'
+Write-Output 'PASS compiled badges: publication time controls new status, modification time remains available for update checks'
 $item = $assembly.CreateInstance('PCL.SduGameDownload')
 $item.Id = 'test-project'; $item.ModifyDate = '2026-10-23T00:00:00Z'
 $item.PublishDate = '2026-10-20'
