@@ -74,13 +74,21 @@ Public Class SduDownloadItem
 
     ''' <summary>解析站点返回的完整 JSON 数组。</summary>
     Public Shared Function ParseList(Json As String) As List(Of SduDownloadItem)
-        Return JArray.Parse(Json).
+        Return ReadArray(Json).
             OfType(Of JObject)().
             Select(AddressOf FromJson).
             OrderByDescending(Function(Item) Item.IsNew).
             ThenByDescending(Function(Item) Item.LatestTime).
             Take(MaxItemCount).
             ToList()
+    End Function
+
+    ''' <summary>保留 API 的原始时间字符串，避免 Json.NET 按本机时区转换后丢失偏移。</summary>
+    Friend Shared Function ReadArray(Json As String) As JArray
+        Using Input As New IO.StringReader(Json), Reader As New Newtonsoft.Json.JsonTextReader(Input)
+            Reader.DateParseHandling = Newtonsoft.Json.DateParseHandling.None
+            Return JArray.Load(Reader)
+        End Using
     End Function
 
     Friend Shared Function NewestTime(ParamArray Values As String()) As DateTimeOffset?

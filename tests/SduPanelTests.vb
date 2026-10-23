@@ -12,6 +12,8 @@ Partial Public Class PageLaunchRight
         Check(Not SduDownloadItem.IsRecent(Now.AddSeconds(1), Now), "Future date was marked new")
         Check(Not SduDownloadItem.IsRecent(Nothing, Now), "Missing date was marked new")
         Check(SduDownloadItem.NewestTime("2026-10-23 08:00:00") = SduDownloadItem.NewestTime("2026-10-23T00:00:00Z"), "Website dates do not use China time")
+        Dim Zoned = SduDownloadItem.ParseList("[{""id"":""timezone"",""publish_date"":""2026-10-23T08:00:00+08:00""}]")(0)
+        Check(Zoned.PublishDate = "2026-10-23T08:00:00+08:00", "JSON parsing changed the original timezone")
         Dim Json = New Newtonsoft.Json.Linq.JArray From {
             New Newtonsoft.Json.Linq.JObject From {{"id", "old"}, {"publish_date", Now.AddDays(-20).ToString("O")}},
             New Newtonsoft.Json.Linq.JObject From {{"id", "future"}, {"publish_date", Now.AddDays(2).ToString("O")}},

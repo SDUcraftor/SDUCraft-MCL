@@ -9,7 +9,10 @@ Friend Module SduPackRecord
         Dim File = Path.Combine(InstanceFolder, "PCL", "SduPack.json")
         If Not SduFileSystem.File.Exists(File) Then Return Nothing
         If SduFileSystem.File.Length(File) > 64 * 1024 Then Throw New InvalidDataException("整合包更新记录超过大小上限。")
-        Return JObject.Parse(SduFileSystem.File.ReadAllText(File, Encoding.UTF8))
+        Using Input As New StringReader(SduFileSystem.File.ReadAllText(File, Encoding.UTF8)), Reader As New Newtonsoft.Json.JsonTextReader(Input)
+            Reader.DateParseHandling = Newtonsoft.Json.DateParseHandling.None
+            Return JObject.Load(Reader)
+        End Using
     End Function
 
     Friend Sub Save(InstanceFolder As String, Item As SduGameDownload)

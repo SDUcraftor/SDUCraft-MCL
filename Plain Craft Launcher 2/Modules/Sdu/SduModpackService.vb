@@ -80,14 +80,14 @@ Public Module SduModpackService
     End Function
 
     Private Function ParseDownloads(Json As String) As List(Of SduGameDownload)
-        Return JArray.Parse(Json).
+        Return SduDownloadItem.ReadArray(Json).
             OfType(Of JObject)().
             Select(AddressOf FromDownload).
             ToList()
     End Function
 
     Private Function ParseFiles(Json As String) As List(Of SduGameDownloadFile)
-        Return JArray.Parse(Json).
+        Return SduDownloadItem.ReadArray(Json).
             OfType(Of JObject)().
             Select(AddressOf FromFile).
             Where(Function(File) File IsNot Nothing).
